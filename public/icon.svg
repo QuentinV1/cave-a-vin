@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#241118" />
+      <stop offset="100%" stop-color="#0b0507" />
+    </linearGradient>
+    <linearGradient id="wine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9f1239" />
+      <stop offset="100%" stop-color="#4c0519" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e5c158" />
+      <stop offset="100%" stop-color="#b59024" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <rect x="16" y="16" width="480" height="480" rx="98" fill="none" stroke="url(#gold)" stroke-opacity="0.35" stroke-width="4" />
+  <!-- Bottle -->
+  <path d="M214 96h44v48c0 18 22 30 22 58v194c0 16-12 28-28 28h-32c-16 0-28-12-28-28V202c0-28 22-40 22-58V96z" fill="url(#wine)" stroke="url(#gold)" stroke-width="6" stroke-linejoin="round" />
+  <rect x="218" y="80" width="36" height="20" rx="4" fill="url(#gold)" />
+  <rect x="206" y="232" width="60" height="84" rx="6" fill="#1b0d12" stroke="url(#gold)" stroke-width="3" />
+  <!-- Wine glass -->
+  <path d="M300 224h76c0 54-16 86-38 86s-38-32-38-86z" fill="none" stroke="url(#gold)" stroke-width="7" stroke-linejoin="round" />
+  <path d="M305 262h66c-4 30-16 44-33 44s-29-14-33-44z" fill="url(#wine)" />
+  <line x1="338" y1="310" x2="338" y2="404" stroke="url(#gold)" stroke-width="7" stroke-linecap="round" />
+  <line x1="306" y1="408" x2="370" y2="408" stroke="url(#gold)" stroke-width="8" stroke-linecap="round" />
+</svg>
