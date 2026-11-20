@@ -1,5 +1,4 @@
-// @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildBackupPayload,
   createSeedData,
@@ -7,6 +6,24 @@ import {
   parseBackupPayload,
   saveAppData,
 } from './storage';
+
+const memoryStore = new Map<string, string>();
+const mockLocalStorage: Storage = {
+  get length() {
+    return memoryStore.size;
+  },
+  clear: () => memoryStore.clear(),
+  getItem: (key: string) => memoryStore.get(key) ?? null,
+  key: (index: number) => Array.from(memoryStore.keys())[index] ?? null,
+  removeItem: (key: string) => {
+    memoryStore.delete(key);
+  },
+  setItem: (key: string, value: string) => {
+    memoryStore.set(key, String(value));
+  },
+};
+
+vi.stubGlobal('localStorage', mockLocalStorage);
 
 describe('storage', () => {
   beforeEach(() => {

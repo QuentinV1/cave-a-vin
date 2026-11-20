@@ -1,13 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import {
   AlertTriangle,
   ArrowUpDown,
   Database,
   Flame,
   Grid3X3,
+  Loader2,
+  LogOut,
   Plus,
   Search,
   Sparkles,
+  User as UserIcon,
   Warehouse,
   Wine,
 } from 'lucide-react';
@@ -20,12 +24,21 @@ import {
   TastingStatus,
   WineColor,
 } from './types/wine';
+import { AppStateData, createSeedData } from './utils/storage';
+import { auth, isFirebaseConfigured } from './utils/firebase';
 import {
-  AppStateData,
-  createSeedData,
-  loadAppData,
-  saveAppData,
-} from './utils/storage';
+  deleteBottleFromCloud,
+  deleteCellarFromCloud,
+  deleteReadingFromCloud,
+  deleteTastingFromCloud,
+  replaceAllUserDataInCloud,
+  saveBottleToCloud,
+  saveCellarToCloud,
+  saveReadingToCloud,
+  saveTastingToCloud,
+  subscribeUserData,
+  updateBottleFieldsInCloud,
+} from './utils/firestoreStorage';
 import {
   computeTastingStatus,
   evaluateReading,
@@ -33,6 +46,7 @@ import {
   generateId,
   WINE_COLOR_LABELS,
 } from './utils/wineUtils';
+import { AuthScreen } from './components/AuthScreen';
 import { BottleCard } from './components/BottleCard';
 import { BottleModal } from './components/BottleModal';
 import { CellarModal } from './components/CellarModal';
@@ -46,8 +60,18 @@ import { TastingNoteModal } from './components/TastingNoteModal';
 type TabKey = 'inventory' | 'plan' | 'cellars' | 'tasting' | 'backup';
 type SortKey = 'name' | 'vintage_desc' | 'vintage_asc' | 'price_desc' | 'quantity_desc';
 
+const EMPTY_DATA: AppStateData = {
+  cellars: [],
+  readings: [],
+  bottles: [],
+  tastings: [],
+};
+
 export const App: React.FC = () => {
-  const [data, setData] = useState<AppStateData>(() => loadAppData());
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(isFirebaseConfigured);
+  const [dataLoading, setDataLoading] = useState<boolean>(false);
+  const [data, setData] = useState<AppStateData>(EMPTY_DATA);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('inventory');
 
@@ -70,9 +94,40 @@ export const App: React.FC = () => {
   const [tastingModalBottle, setTastingModalBottle] = useState<Bottle | null>(null);
 
   useEffect(() => {
-    const res = saveAppData(data);
-    setStorageError(res.ok ? null : res.error ?? 'Erreur de sauvegarde.');
-  }, [data]);
+    if (!isFirebaseConfigured || !auth) {
+      setAuthLoading(false);
+      return;
+    }
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setAuthLoading(false);
+      if (!firebaseUser) {
+        setData(EMPTY_DATA);
+        setDataLoading(false);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    setDataLoading(true);
+    setStorageError(null);
+    const unsubscribe = subscribeUserData(
+      user.uid,
+      (nextData, isInitialLoadComplete) => {
+        setData(nextData);
+        if (isInitialLoadComplete) {
+          setDataLoading(false);
+        }
+      },
+      (errMsg) => {
+        setStorageError(errMsg);
+        setDataLoading(false);
+      },
+    );
+    return unsubscribe;
+  }, [user]);
 
   // Global KPIs
   const stats = useMemo(() => {
@@ -171,51 +226,58 @@ export const App: React.FC = () => {
     return { count, value };
   }, [filteredBottles]);
 
+  const runCloudAction = async (action: () => Promise<void>, fallbackMessage: string) => {
+    try {
+      setStorageError(null);
+      await action();
+    } catch (err) {
+      setStorageError(err instanceof Error ? err.message : fallbackMessage);
+    }
+  };
+
   // Bottle CRUD
   const handleSaveBottle = (
     payload: Omit<Bottle, 'id' | 'createdAt' | 'updatedAt'>,
     existingId?: string,
   ) => {
+    if (!user) return;
     const now = new Date().toISOString();
-    setData((prev) => {
-      if (existingId) {
-        return {
-          ...prev,
-          bottles: prev.bottles.map((b) =>
-            b.id === existingId ? { ...b, ...payload, updatedAt: now } : b,
-          ),
+    const existing = existingId ? data.bottles.find((b) => b.id === existingId) : undefined;
+    const bottle: Bottle = existing
+      ? { ...existing, ...payload, updatedAt: now }
+      : {
+          ...payload,
+          id: generateId('bot'),
+          createdAt: now,
+          updatedAt: now,
         };
-      }
-      const newBottle: Bottle = {
-        ...payload,
-        id: generateId('bot'),
-        createdAt: now,
-        updatedAt: now,
-      };
-      return { ...prev, bottles: [newBottle, ...prev.bottles] };
-    });
+    void runCloudAction(
+      () => saveBottleToCloud(user.uid, bottle),
+      'Impossible de sauvegarder la bouteille.',
+    );
   };
 
   const handleAdjustQuantity = (bottleId: string, delta: number) => {
+    if (!user) return;
+    const bottle = data.bottles.find((b) => b.id === bottleId);
+    if (!bottle) return;
     const now = new Date().toISOString();
-    setData((prev) => ({
-      ...prev,
-      bottles: prev.bottles.map((b) =>
-        b.id === bottleId
-          ? { ...b, quantity: Math.max(0, b.quantity + delta), updatedAt: now }
-          : b,
-      ),
-    }));
+    const quantity = Math.max(0, bottle.quantity + delta);
+    void runCloudAction(
+      () => updateBottleFieldsInCloud(user.uid, bottleId, { quantity, updatedAt: now }),
+      'Impossible de mettre à jour la quantité.',
+    );
   };
 
   const handleDeleteBottle = (bottleId: string) => {
+    if (!user) return;
     const bottle = data.bottles.find((b) => b.id === bottleId);
     if (!bottle) return;
     if (!window.confirm(`Supprimer « ${bottle.name} » de votre cave ?`)) return;
-    setData((prev) => ({
-      ...prev,
-      bottles: prev.bottles.filter((b) => b.id !== bottleId),
-    }));
+    void runCloudAction(
+      () => deleteBottleFromCloud(user.uid, bottleId),
+      'Impossible de supprimer la bouteille.',
+    );
   };
 
   // Cellar CRUD
@@ -223,40 +285,41 @@ export const App: React.FC = () => {
     payload: Omit<Cellar, 'id' | 'createdAt'>,
     existingId?: string,
   ) => {
-    setData((prev) => {
-      if (existingId) {
-        return {
-          ...prev,
-          cellars: prev.cellars.map((c) =>
-            c.id === existingId ? { ...c, ...payload } : c,
-          ),
+    if (!user) return;
+    const existing = existingId ? data.cellars.find((c) => c.id === existingId) : undefined;
+    const cellar: Cellar = existing
+      ? { ...existing, ...payload }
+      : {
+          ...payload,
+          id: generateId('cellar'),
+          createdAt: new Date().toISOString(),
         };
-      }
-      const newCellar: Cellar = {
-        ...payload,
-        id: generateId('cellar'),
-        createdAt: new Date().toISOString(),
-      };
-      return { ...prev, cellars: [...prev.cellars, newCellar] };
-    });
+    void runCloudAction(
+      () => saveCellarToCloud(user.uid, cellar),
+      'Impossible de sauvegarder la cave.',
+    );
   };
 
   const handleDeleteCellar = (cellarId: string) => {
+    if (!user) return;
     const cellar = data.cellars.find((c) => c.id === cellarId);
     if (!cellar) return;
-    const linkedBottles = data.bottles.filter((b) => b.cellarId === cellarId).length;
+    const linkedBottleIds = data.bottles
+      .filter((b) => b.cellarId === cellarId)
+      .map((b) => b.id);
+    const linkedReadingIds = data.readings
+      .filter((r) => r.cellarId === cellarId)
+      .map((r) => r.id);
     const msg =
-      linkedBottles > 0
-        ? `Supprimer « ${cellar.name} » ainsi que ses ${linkedBottles} référence(s) et ses relevés ?`
+      linkedBottleIds.length > 0
+        ? `Supprimer « ${cellar.name} » ainsi que ses ${linkedBottleIds.length} référence(s) et ses relevés ?`
         : `Supprimer la cave « ${cellar.name} » et ses relevés ?`;
     if (!window.confirm(msg)) return;
 
-    setData((prev) => ({
-      ...prev,
-      cellars: prev.cellars.filter((c) => c.id !== cellarId),
-      readings: prev.readings.filter((r) => r.cellarId !== cellarId),
-      bottles: prev.bottles.filter((b) => b.cellarId !== cellarId),
-    }));
+    void runCloudAction(
+      () => deleteCellarFromCloud(user.uid, cellarId, linkedReadingIds, linkedBottleIds),
+      'Impossible de supprimer la cave.',
+    );
     if (selectedCellarId === cellarId) {
       setSelectedCellarId('all');
     }
@@ -270,60 +333,93 @@ export const App: React.FC = () => {
     recordedAt: string;
     note?: string;
   }) => {
+    if (!user) return;
     const newReading: CellarReading = {
       ...payload,
       id: generateId('read'),
     };
-    setData((prev) => ({
-      ...prev,
-      readings: [newReading, ...prev.readings],
-    }));
+    void runCloudAction(
+      () => saveReadingToCloud(user.uid, newReading),
+      'Impossible de sauvegarder le relevé.',
+    );
   };
 
   const handleDeleteReading = (readingId: string) => {
-    setData((prev) => ({
-      ...prev,
-      readings: prev.readings.filter((r) => r.id !== readingId),
-    }));
+    if (!user) return;
+    void runCloudAction(
+      () => deleteReadingFromCloud(user.uid, readingId),
+      'Impossible de supprimer le relevé.',
+    );
   };
 
   // Tastings & Rack CRUD
   const handleSaveTasting = (entry: Omit<TastingEntry, 'id'>) => {
+    if (!user) return;
     const newEntry: TastingEntry = {
       ...entry,
       id: generateId('taste'),
     };
-    setData((prev) => ({
-      ...prev,
-      tastings: [newEntry, ...prev.tastings],
-    }));
+    void runCloudAction(
+      () => saveTastingToCloud(user.uid, newEntry),
+      'Impossible de sauvegarder la dégustation.',
+    );
   };
 
   const handleDeleteTasting = (tastingId: string) => {
-    setData((prev) => ({
-      ...prev,
-      tastings: prev.tastings.filter((t) => t.id !== tastingId),
-    }));
+    if (!user) return;
+    void runCloudAction(
+      () => deleteTastingFromCloud(user.uid, tastingId),
+      'Impossible de supprimer la dégustation.',
+    );
   };
 
   const handleAssignRack = (bottleId: string, rackLocation: string) => {
+    if (!user) return;
     const now = new Date().toISOString();
-    setData((prev) => ({
-      ...prev,
-      bottles: prev.bottles.map((b) =>
-        b.id === bottleId ? { ...b, rackLocation, updatedAt: now } : b,
-      ),
-    }));
+    void runCloudAction(
+      () =>
+        updateBottleFieldsInCloud(user.uid, bottleId, {
+          rackLocation,
+          updatedAt: now,
+        }),
+      "Impossible d'assigner l'emplacement.",
+    );
   };
 
   // Backup handlers
   const handleImportReplace = (backup: CellarBackupData) => {
-    setData({
+    if (!user) return;
+    const nextData: AppStateData = {
       cellars: backup.cellars,
       readings: backup.readings,
       bottles: backup.bottles,
       tastings: backup.tastings ?? [],
-    });
+    };
+    void runCloudAction(
+      () => replaceAllUserDataInCloud(user.uid, data, nextData),
+      "Impossible d'importer la sauvegarde.",
+    );
+  };
+
+  const handleResetDemo = () => {
+    if (!user) return;
+    void runCloudAction(
+      () => replaceAllUserDataInCloud(user.uid, data, createSeedData()),
+      'Impossible de charger les données de démonstration.',
+    );
+  };
+
+  const handleClearAll = () => {
+    if (!user) return;
+    void runCloudAction(
+      () => replaceAllUserDataInCloud(user.uid, data, EMPTY_DATA),
+      'Impossible de vider votre cave.',
+    );
+  };
+
+  const handleSignOut = async () => {
+    if (!auth) return;
+    await signOut(auth);
   };
 
   const openAddBottle = () => {
@@ -337,6 +433,28 @@ export const App: React.FC = () => {
     setEditingBottle(null);
     setBottleModalOpen(true);
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] text-stone-300">
+        <Loader2 className="h-8 w-8 animate-spin text-gold-400" />
+        <p className="text-sm">Vérification de votre session...</p>
+      </div>
+    );
+  }
+
+  if (!isFirebaseConfigured || !user) {
+    return <AuthScreen />;
+  }
+
+  if (dataLoading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] text-stone-300">
+        <Loader2 className="h-8 w-8 animate-spin text-gold-400" />
+        <p className="text-sm">Chargement de votre cave...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] text-stone-100">
@@ -401,15 +519,37 @@ export const App: React.FC = () => {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={openAddBottle}
-            className="inline-flex items-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500"
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Ajouter une bouteille</span>
-            <span className="sm:hidden">Ajouter</span>
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={openAddBottle}
+              className="inline-flex items-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Ajouter une bouteille</span>
+              <span className="sm:hidden">Ajouter</span>
+            </button>
+
+            <div
+              className="hidden items-center gap-2 rounded-xl border border-cellar-800 bg-cellar-900/80 px-3 py-2 text-xs text-stone-300 md:flex"
+              title={user.email ?? undefined}
+            >
+              <UserIcon className="h-3.5 w-3.5 text-gold-400" />
+              <span className="max-w-[140px] truncate">
+                {user.displayName || user.email || 'Utilisateur'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSignOut}
+              title="Se déconnecter"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-cellar-800 bg-cellar-900/80 px-3 py-2.5 text-xs font-medium text-stone-300 transition hover:border-bordeaux-600 hover:text-white"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Déconnexion</span>
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -673,10 +813,8 @@ export const App: React.FC = () => {
           <BackupView
             data={data}
             onImportReplace={handleImportReplace}
-            onResetDemo={() => setData(createSeedData())}
-            onClearAll={() =>
-              setData({ cellars: [], readings: [], bottles: [], tastings: [] })
-            }
+            onResetDemo={handleResetDemo}
+            onClearAll={handleClearAll}
           />
         )}
       </main>

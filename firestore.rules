@@ -1,0 +1,331 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model — "La Cave" Wine Cellar App
+// ===============================================================
+//
+// All user data is isolated under per-user subcollections:
+//   /users/{userId}/...
+//
+// 1. Collection: /users/{userId}/cellars/{cellarId}
+//    Document ID: cellarId (must match `id` field)
+//    Fields:
+//      - id: string (required, immutable, == cellarId, 1..128 chars)
+//      - name: string (required, 1..120 chars)
+//      - location: string (optional, 0..120 chars)
+//      - capacity: number (optional, >= 0)
+//      - rackRows: number (optional, 1..50)
+//      - rackCols: number (optional, 1..50)
+//      - idealTempMin: number (required)
+//      - idealTempMax: number (required)
+//      - idealHumidityMin: number (required)
+//      - idealHumidityMax: number (required)
+//      - createdAt: string (required, immutable, ISO 8601 timestamp, <= 64 chars)
+//
+// 2. Collection: /users/{userId}/readings/{readingId}
+//    Document ID: readingId (must match `id` field)
+//    Fields:
+//      - id: string (required, immutable, == readingId, 1..128 chars)
+//      - cellarId: string (required, 1..128 chars)
+//      - temperature: number (required)
+//      - humidity: number (required, 0..100)
+//      - recordedAt: string (required, ISO 8601 timestamp, <= 64 chars)
+//      - note: string (optional, 0..500 chars)
+//
+// 3. Collection: /users/{userId}/bottles/{bottleId}
+//    Document ID: bottleId (must match `id` field)
+//    Fields:
+//      - id: string (required, immutable, == bottleId, 1..128 chars)
+//      - cellarId: string (required, 1..128 chars)
+//      - name: string (required, 1..200 chars)
+//      - color: string (required, in ['rouge', 'blanc', 'rose', 'champagne', 'autre'])
+//      - vintage: number (optional)
+//      - appellation: string (required, 0..200 chars)
+//      - quantity: number (required, >= 0)
+//      - rackLocation: string (optional, 0..100 chars)
+//      - purchasePrice: number (optional, >= 0)
+//      - estimatedCurrentPrice: number (optional, >= 0)
+//      - drinkFrom: number (optional)
+//      - drinkTo: number (optional)
+//      - maxKeepYears: number (optional, >= 0)
+//      - foodPairings: list of strings (optional, max 30 items)
+//      - barcode: string (optional, 0..64 chars)
+//      - photoDataUrl: string (optional, 0..500000 chars)
+//      - notes: string (optional, 0..2000 chars)
+//      - createdAt: string (required, immutable, ISO 8601 timestamp, <= 64 chars)
+//      - updatedAt: string (required, ISO 8601 timestamp, <= 64 chars)
+//
+// 4. Collection: /users/{userId}/tastings/{tastingId}
+//    Document ID: tastingId (must match `id` field)
+//    Fields:
+//      - id: string (required, immutable, == tastingId, 1..128 chars)
+//      - bottleId: string (optional, 0..128 chars)
+//      - bottleName: string (required, 1..200 chars)
+//      - appellation: string (optional, 0..200 chars)
+//      - vintage: number (optional)
+//      - color: string (required, in ['rouge', 'blanc', 'rose', 'champagne', 'autre'])
+//      - cellarId: string (optional, 0..128 chars)
+//      - rating: number (required, 0..5)
+//      - tastedAt: string (required, ISO 8601 timestamp, <= 64 chars)
+//      - occasion: string (optional, 0..200 chars)
+//      - foodPairing: string (optional, 0..200 chars)
+//      - notes: string (optional, 0..2000 chars)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if authenticated user owns the user-scoped path
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    // Validate document contains only allowed fields (strict schema)
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    // Ensure immutable fields are not modified on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate required string length
+    function validStringLength(data, field, minLen, maxLen) {
+      return data[field] is string &&
+             data[field].size() >= minLen &&
+             data[field].size() <= maxLen;
+    }
+
+    // Validate optional string (if present, must be string within bounds)
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) ||
+             (data[field] is string &&
+              data[field].size() >= minLen &&
+              data[field].size() <= maxLen);
+    }
+
+    // Validate optional number (if present, must be number)
+    function isValidOptionalNumber(data, field) {
+      return !(field in data) || data[field] is number;
+    }
+
+    // Validate optional number with minimum bound
+    function isValidOptionalNumberMin(data, field, minVal) {
+      return !(field in data) ||
+             (data[field] is number && data[field] >= minVal);
+    }
+
+    // Validate optional number within inclusive range
+    function isValidOptionalNumberRange(data, field, minVal, maxVal) {
+      return !(field in data) ||
+             (data[field] is number &&
+              data[field] >= minVal &&
+              data[field] <= maxVal);
+    }
+
+    // Validate ISO 8601 date string format with length cap to prevent DoS
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+             dateStr.size() <= 64 &&
+             dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // Validate WineColor enum
+    function isValidWineColor(color) {
+      return color in ['rouge', 'blanc', 'rose', 'champagne', 'autre'];
+    }
+
+    // Validate optional list of strings with max item count
+    function isValidOptionalFoodPairings(data) {
+      return !('foodPairings' in data) ||
+             (data.foodPairings is list &&
+              data.foodPairings.size() <= 30 &&
+              (data.foodPairings.size() == 0 ||
+               (data.foodPairings[0] is string && data.foodPairings[0].size() <= 100)));
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update)
+    // ===============================================================
+
+    function isValidCellar(data, cellarId) {
+      let allowed = [
+        'id', 'name', 'location', 'capacity', 'rackRows', 'rackCols',
+        'idealTempMin', 'idealTempMax', 'idealHumidityMin', 'idealHumidityMax',
+        'createdAt'
+      ];
+      let required = [
+        'id', 'name', 'idealTempMin', 'idealTempMax',
+        'idealHumidityMin', 'idealHumidityMax', 'createdAt'
+      ];
+
+      return hasOnlyAllowedFields(data, allowed) &&
+             hasRequiredFields(data, required) &&
+             validStringLength(data, 'id', 1, 128) &&
+             data.id == cellarId &&
+             validStringLength(data, 'name', 1, 120) &&
+             isValidOptionalString(data, 'location', 0, 120) &&
+             isValidOptionalNumberMin(data, 'capacity', 0) &&
+             isValidOptionalNumberRange(data, 'rackRows', 1, 50) &&
+             isValidOptionalNumberRange(data, 'rackCols', 1, 50) &&
+             data.idealTempMin is number &&
+             data.idealTempMax is number &&
+             data.idealHumidityMin is number &&
+             data.idealHumidityMax is number &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidReading(data, readingId) {
+      let allowed = ['id', 'cellarId', 'temperature', 'humidity', 'recordedAt', 'note'];
+      let required = ['id', 'cellarId', 'temperature', 'humidity', 'recordedAt'];
+
+      return hasOnlyAllowedFields(data, allowed) &&
+             hasRequiredFields(data, required) &&
+             validStringLength(data, 'id', 1, 128) &&
+             data.id == readingId &&
+             validStringLength(data, 'cellarId', 1, 128) &&
+             data.temperature is number &&
+             data.humidity is number &&
+             data.humidity >= 0 &&
+             data.humidity <= 100 &&
+             isValidDateString(data.recordedAt) &&
+             isValidOptionalString(data, 'note', 0, 500);
+    }
+
+    function isValidBottle(data, bottleId) {
+      let allowed = [
+        'id', 'cellarId', 'name', 'color', 'vintage', 'appellation',
+        'quantity', 'rackLocation', 'purchasePrice', 'estimatedCurrentPrice',
+        'drinkFrom', 'drinkTo', 'maxKeepYears', 'foodPairings', 'barcode',
+        'photoDataUrl', 'notes', 'createdAt', 'updatedAt'
+      ];
+      let required = [
+        'id', 'cellarId', 'name', 'color', 'appellation',
+        'quantity', 'createdAt', 'updatedAt'
+      ];
+
+      return hasOnlyAllowedFields(data, allowed) &&
+             hasRequiredFields(data, required) &&
+             validStringLength(data, 'id', 1, 128) &&
+             data.id == bottleId &&
+             validStringLength(data, 'cellarId', 1, 128) &&
+             validStringLength(data, 'name', 1, 200) &&
+             data.color is string &&
+             isValidWineColor(data.color) &&
+             isValidOptionalNumber(data, 'vintage') &&
+             validStringLength(data, 'appellation', 0, 200) &&
+             data.quantity is number &&
+             data.quantity >= 0 &&
+             isValidOptionalString(data, 'rackLocation', 0, 100) &&
+             isValidOptionalNumberMin(data, 'purchasePrice', 0) &&
+             isValidOptionalNumberMin(data, 'estimatedCurrentPrice', 0) &&
+             isValidOptionalNumber(data, 'drinkFrom') &&
+             isValidOptionalNumber(data, 'drinkTo') &&
+             isValidOptionalNumberMin(data, 'maxKeepYears', 0) &&
+             isValidOptionalFoodPairings(data) &&
+             isValidOptionalString(data, 'barcode', 0, 64) &&
+             isValidOptionalString(data, 'photoDataUrl', 0, 500000) &&
+             isValidOptionalString(data, 'notes', 0, 2000) &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt);
+    }
+
+    function isValidTasting(data, tastingId) {
+      let allowed = [
+        'id', 'bottleId', 'bottleName', 'appellation', 'vintage',
+        'color', 'cellarId', 'rating', 'tastedAt', 'occasion',
+        'foodPairing', 'notes'
+      ];
+      let required = ['id', 'bottleName', 'color', 'rating', 'tastedAt'];
+
+      return hasOnlyAllowedFields(data, allowed) &&
+             hasRequiredFields(data, required) &&
+             validStringLength(data, 'id', 1, 128) &&
+             data.id == tastingId &&
+             isValidOptionalString(data, 'bottleId', 0, 128) &&
+             validStringLength(data, 'bottleName', 1, 200) &&
+             isValidOptionalString(data, 'appellation', 0, 200) &&
+             isValidOptionalNumber(data, 'vintage') &&
+             data.color is string &&
+             isValidWineColor(data.color) &&
+             isValidOptionalString(data, 'cellarId', 0, 128) &&
+             data.rating is number &&
+             data.rating >= 0 &&
+             data.rating <= 5 &&
+             isValidDateString(data.tastedAt) &&
+             isValidOptionalString(data, 'occasion', 0, 200) &&
+             isValidOptionalString(data, 'foodPairing', 0, 200) &&
+             isValidOptionalString(data, 'notes', 0, 2000);
+    }
+
+    // ===============================================================
+    // Default Deny
+    // ===============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Per-User Subcollections
+    // ===============================================================
+
+    match /users/{userId} {
+      match /cellars/{cellarId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+                         isValidCellar(request.resource.data, cellarId);
+        allow update: if isOwner(userId) &&
+                         isValidCellar(request.resource.data, cellarId) &&
+                         areImmutableFieldsUnchanged(['id', 'createdAt']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /readings/{readingId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+                         isValidReading(request.resource.data, readingId);
+        allow update: if isOwner(userId) &&
+                         isValidReading(request.resource.data, readingId) &&
+                         areImmutableFieldsUnchanged(['id']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /bottles/{bottleId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+                         isValidBottle(request.resource.data, bottleId);
+        allow update: if isOwner(userId) &&
+                         isValidBottle(request.resource.data, bottleId) &&
+                         areImmutableFieldsUnchanged(['id', 'createdAt']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /tastings/{tastingId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+                         isValidTasting(request.resource.data, tastingId);
+        allow update: if isOwner(userId) &&
+                         isValidTasting(request.resource.data, tastingId) &&
+                         areImmutableFieldsUnchanged(['id']);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

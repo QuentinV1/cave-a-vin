@@ -80,10 +80,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <h2 className="font-serif text-2xl font-semibold text-stone-100">
-          Sauvegarde & Données locales
+          Sauvegarde & Données Cloud
         </h2>
         <p className="text-sm text-stone-400">
-          Toutes vos données (caves, relevés T°/hygro, bouteilles et photos) sont stockées localement sur cet appareil.
+          Toutes vos données (caves, relevés T°/hygro, bouteilles et photos) sont stockées dans votre espace personnel et synchronisées sur vos appareils.
         </p>
       </div>
 
