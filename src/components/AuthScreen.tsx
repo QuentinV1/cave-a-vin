@@ -221,12 +221,12 @@ export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
   return (
     <div
       id="modal-auth"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-2xl border border-cellar-700 bg-cellar-900 p-6 text-stone-100 shadow-2xl">
+      <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-cellar-700 bg-cellar-900 p-4 text-stone-100 shadow-2xl sm:p-6">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between border-b border-cellar-800 pb-3">
           <div className="flex items-center gap-2.5">

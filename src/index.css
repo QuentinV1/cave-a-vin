@@ -8,6 +8,10 @@
     color-scheme: dark;
   }
 
+  body {
+    overflow-x: clip;
+  }
+
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;

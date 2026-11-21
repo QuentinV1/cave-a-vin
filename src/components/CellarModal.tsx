@@ -107,9 +107,9 @@ export const CellarModal: React.FC<CellarModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-cellar-700/80 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4">
+      <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-cellar-700/80 px-4 py-3.5 sm:px-6 sm:py-4">
           <div className="flex items-center gap-2.5">
             <Warehouse className="h-5 w-5 text-gold-400" />
             <h2 className="font-serif text-xl font-semibold text-stone-100">
@@ -126,7 +126,7 @@ export const CellarModal: React.FC<CellarModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+        <form onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
           {error && (
             <div className="rounded-xl border border-red-700/60 bg-red-950/60 px-4 py-2.5 text-sm text-red-200">
               {error}
@@ -179,7 +179,7 @@ export const CellarModal: React.FC<CellarModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-stone-300">
                 Plan casiers : Rangées (A, B, C...)
@@ -258,7 +258,7 @@ export const CellarModal: React.FC<CellarModalProps> = ({
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
             <button
               type="button"
               onClick={onClose}

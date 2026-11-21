@@ -96,7 +96,7 @@ export const RackPlanView: React.FC<RackPlanViewProps> = ({
             setSelectedCellarId(e.target.value);
             setSelectedSlot(null);
           }}
-          className="rounded-xl border border-cellar-700 bg-cellar-900 px-3.5 py-2 text-sm text-stone-100 focus:border-bordeaux-500 focus:outline-none"
+          className="w-full rounded-xl border border-cellar-700 bg-cellar-900 px-3.5 py-2 text-sm text-stone-100 focus:border-bordeaux-500 focus:outline-none sm:w-auto"
         >
           {cellars.map((c) => (
             <option key={c.id} value={c.id}>
@@ -108,7 +108,7 @@ export const RackPlanView: React.FC<RackPlanViewProps> = ({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         {/* Rack Grid */}
-        <div className="overflow-x-auto rounded-2xl border border-cellar-700/80 bg-cellar-900/90 p-4 sm:p-5">
+        <div className="min-w-0 overflow-x-auto rounded-2xl border border-cellar-700/80 bg-cellar-900/90 p-3.5 sm:p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-400">
             <span className="inline-flex items-center gap-1.5 font-medium text-stone-200">
               <Grid3X3 className="h-4 w-4 text-gold-400" />
@@ -189,7 +189,7 @@ export const RackPlanView: React.FC<RackPlanViewProps> = ({
         </div>
 
         {/* Side Panel: Slot details & Unassigned */}
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <div className="rounded-2xl border border-cellar-700/80 bg-cellar-900/90 p-4">
             <h3 className="flex items-center gap-2 font-serif text-lg font-semibold text-stone-100">
               <MapPin className="h-4 w-4 text-gold-400" />
@@ -252,11 +252,11 @@ export const RackPlanView: React.FC<RackPlanViewProps> = ({
                     <label className="mb-1.5 block text-xs font-medium text-stone-300">
                       Placer une bouteille non rangée ici :
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <select
                         value={assignBottleId}
                         onChange={(e) => setAssignBottleId(e.target.value)}
-                        className="min-w-0 flex-1 rounded-lg border border-cellar-700 bg-cellar-950 px-2.5 py-1.5 text-xs text-stone-100"
+                        className="min-w-0 flex-1 rounded-lg border border-cellar-700 bg-cellar-950 px-2.5 py-2 text-xs text-stone-100 sm:py-1.5"
                       >
                         {unassigned.map((b) => (
                           <option key={b.id} value={b.id}>
@@ -272,7 +272,7 @@ export const RackPlanView: React.FC<RackPlanViewProps> = ({
                             onAssignRack(assignBottleId, `Casier ${selectedSlot}`);
                           }
                         }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-bordeaux-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-bordeaux-500 disabled:opacity-50"
+                        className="inline-flex shrink-0 items-center justify-center gap-1 rounded-lg bg-bordeaux-600 px-3 py-2 text-xs font-medium text-white hover:bg-bordeaux-500 disabled:opacity-50 sm:py-1.5"
                       >
                         <Plus className="h-3.5 w-3.5" />
                         Placer

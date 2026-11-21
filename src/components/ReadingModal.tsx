@@ -78,9 +78,9 @@ export const ReadingModal: React.FC<ReadingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-cellar-700/80 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4">
+      <div className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-cellar-700/80 px-4 py-3.5 sm:px-6 sm:py-4">
           <div>
             <h2 className="font-serif text-xl font-semibold text-stone-100">
               Nouveau relevé
@@ -97,14 +97,14 @@ export const ReadingModal: React.FC<ReadingModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+        <form onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
           {error && (
             <div className="rounded-xl border border-red-700/60 bg-red-950/60 px-4 py-2.5 text-sm text-red-200">
               {error}
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-stone-200">
                 <Thermometer className="h-4 w-4 text-rose-400" />
@@ -170,7 +170,7 @@ export const ReadingModal: React.FC<ReadingModalProps> = ({
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
             <button
               type="button"
               onClick={onClose}

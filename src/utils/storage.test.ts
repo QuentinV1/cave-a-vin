@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  AppStateData,
   buildBackupPayload,
-  createSeedData,
+  createEmptyData,
   loadAppData,
   parseBackupPayload,
   saveAppData,
@@ -25,47 +26,93 @@ const mockLocalStorage: Storage = {
 
 vi.stubGlobal('localStorage', mockLocalStorage);
 
+const SAMPLE_DATA: AppStateData = {
+  cellars: [
+    {
+      id: 'c1',
+      name: 'Cave Test',
+      location: 'Sous-sol',
+      capacity: 50,
+      rackRows: 3,
+      rackCols: 4,
+      idealTempMin: 11,
+      idealTempMax: 14,
+      idealHumidityMin: 65,
+      idealHumidityMax: 80,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+  ],
+  readings: [
+    {
+      id: 'r1',
+      cellarId: 'c1',
+      temperature: 12.4,
+      humidity: 72,
+      recordedAt: '2026-01-01T00:00:00.000Z',
+    },
+  ],
+  bottles: [
+    {
+      id: 'b1',
+      cellarId: 'c1',
+      name: 'Château Test',
+      color: 'rouge',
+      vintage: 2020,
+      appellation: 'Bordeaux',
+      quantity: 3,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  ],
+  tastings: [
+    {
+      id: 't1',
+      bottleId: 'b1',
+      bottleName: 'Château Test',
+      color: 'rouge',
+      cellarId: 'c1',
+      rating: 4.5,
+      tastedAt: '2026-01-01T00:00:00.000Z',
+    },
+  ],
+};
+
 describe('storage', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('creates seed data with cellars, readings, bottles and tastings', () => {
-    const seed = createSeedData();
-    expect(seed.cellars.length).toBeGreaterThanOrEqual(2);
-    expect(seed.bottles.length).toBeGreaterThanOrEqual(4);
-    expect(seed.readings.length).toBeGreaterThanOrEqual(2);
-    expect(seed.tastings.length).toBeGreaterThanOrEqual(1);
+  it('creates empty data by default', () => {
+    const empty = createEmptyData();
+    expect(empty).toEqual({ cellars: [], readings: [], bottles: [], tastings: [] });
   });
 
-  it('loads seed data on empty localStorage and persists updates', () => {
+  it('loads empty state on empty localStorage and persists updates', () => {
     const initial = loadAppData();
-    expect(initial.cellars.length).toBeGreaterThan(0);
+    expect(initial.cellars).toEqual([]);
 
-    const updated = { ...initial, tastings: [] };
-    const saveRes = saveAppData(updated);
+    const saveRes = saveAppData(SAMPLE_DATA);
     expect(saveRes.ok).toBe(true);
 
     const reloaded = loadAppData();
-    expect(reloaded.tastings).toEqual([]);
-    expect(reloaded.bottles.length).toBe(initial.bottles.length);
+    expect(reloaded.tastings).toHaveLength(1);
+    expect(reloaded.bottles).toHaveLength(1);
   });
 
   it('builds and parses v2 backup payloads and supports v1 backward compatibility', () => {
-    const seed = createSeedData();
-    const payload = buildBackupPayload(seed);
+    const payload = buildBackupPayload(SAMPLE_DATA);
     expect(payload.version).toBe(2);
 
     const parsedV2 = parseBackupPayload(JSON.stringify(payload));
     expect(parsedV2.version).toBe(2);
-    expect(parsedV2.tastings?.length).toBe(seed.tastings.length);
+    expect(parsedV2.tastings?.length).toBe(SAMPLE_DATA.tastings.length);
 
     const v1Json = JSON.stringify({
       version: 1,
       exportedAt: '2026-01-01T00:00:00.000Z',
-      cellars: seed.cellars,
-      readings: seed.readings,
-      bottles: seed.bottles,
+      cellars: SAMPLE_DATA.cellars,
+      readings: SAMPLE_DATA.readings,
+      bottles: SAMPLE_DATA.bottles,
     });
     const parsedV1 = parseBackupPayload(v1Json);
     expect(parsedV1.version).toBe(1);

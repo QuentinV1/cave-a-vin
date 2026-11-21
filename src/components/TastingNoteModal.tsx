@@ -65,9 +65,9 @@ export const TastingNoteModal: React.FC<TastingNoteModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-cellar-700/80 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-4">
+      <div className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-cellar-700/80 px-4 py-3.5 sm:px-6 sm:py-4">
           <div className="flex items-center gap-2.5">
             <Wine className="h-5 w-5 text-gold-400" />
             <div>
@@ -89,7 +89,7 @@ export const TastingNoteModal: React.FC<TastingNoteModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+        <form onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
           <div>
             <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-stone-400">
               Note globale
@@ -173,7 +173,7 @@ export const TastingNoteModal: React.FC<TastingNoteModalProps> = ({
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
             <button
               type="button"
               onClick={onClose}

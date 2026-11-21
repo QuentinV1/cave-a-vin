@@ -93,11 +93,11 @@ export const CellarsView: React.FC<CellarsViewProps> = ({
                 className="flex flex-col overflow-hidden rounded-2xl border border-cellar-700/80 bg-cellar-900/90 shadow-lg"
               >
                 {/* Cellar Header */}
-                <div className="flex items-start justify-between border-b border-cellar-800 px-5 py-4">
-                  <div>
+                <div className="flex items-start justify-between gap-2 border-b border-cellar-800 px-4 py-4 sm:px-5">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <Warehouse className="h-5 w-5 text-gold-400" />
-                      <h3 className="font-serif text-xl font-semibold text-stone-100">
+                      <Warehouse className="h-5 w-5 shrink-0 text-gold-400" />
+                      <h3 className="truncate font-serif text-xl font-semibold text-stone-100">
                         {cellar.name}
                       </h3>
                     </div>
@@ -108,7 +108,7 @@ export const CellarsView: React.FC<CellarsViewProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1">
                     <button
                       type="button"
                       onClick={() => onEditCellar(cellar)}
@@ -228,8 +228,8 @@ export const CellarsView: React.FC<CellarsViewProps> = ({
                 </div>
 
                 {/* Readings History */}
-                <div className="flex-1 space-y-2.5 p-5">
-                  <div className="flex items-center justify-between">
+                <div className="flex-1 space-y-2.5 p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
                       Historique des relevés ({cellarReadings.length})
                     </h4>

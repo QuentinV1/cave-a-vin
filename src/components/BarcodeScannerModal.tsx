@@ -118,8 +118,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-4">
+      <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-cellar-700/80 px-5 py-4">
           <div className="flex items-center gap-2.5">
             <Camera className="h-5 w-5 text-gold-400" />
@@ -171,7 +171,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value)}
                 placeholder="Ex: 3760123456789"
-                className="flex-1 rounded-xl border border-cellar-700 bg-cellar-950 px-3.5 py-2 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
+                className="min-w-0 flex-1 rounded-xl border border-cellar-700 bg-cellar-950 px-3.5 py-2 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
               />
               <button
                 type="submit"

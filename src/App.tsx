@@ -23,7 +23,7 @@ import {
   TastingStatus,
   WineColor,
 } from './types/wine';
-import { AppStateData, createSeedData, loadAppData, saveAppData } from './utils/storage';
+import { AppStateData, loadAppData, saveAppData } from './utils/storage';
 import { deconnexionFirebase, observerAuth } from './utils/firebase';
 import {
   activerSyncCloud,
@@ -416,10 +416,6 @@ export const App: React.FC = () => {
     sauvegarderDonnees(nextData);
   };
 
-  const handleResetDemo = () => {
-    sauvegarderDonnees(createSeedData());
-  };
-
   const handleClearAll = () => {
     sauvegarderDonnees(EMPTY_DATA);
   };
@@ -448,24 +444,24 @@ export const App: React.FC = () => {
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] text-stone-100">
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-cellar-800/90 bg-cellar-950/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-gold-500/30 bg-gradient-to-br from-bordeaux-600 to-bordeaux-800 shadow-lg shadow-bordeaux-900/50">
-              <Wine className="h-5 w-5 text-gold-400" />
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-6 sm:py-3.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gold-500/30 bg-gradient-to-br from-bordeaux-600 to-bordeaux-800 shadow-lg shadow-bordeaux-900/50 sm:h-10 sm:w-10">
+              <Wine className="h-4 w-4 text-gold-400 sm:h-5 sm:w-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="font-serif text-xl font-bold tracking-tight text-stone-100 sm:text-2xl">
+                <h1 className="truncate font-serif text-lg font-bold tracking-tight text-stone-100 sm:text-2xl">
                   La Cave
                 </h1>
                 <span
                   id="header-version-badge"
-                  className="rounded-md border border-cellar-700 bg-cellar-900 px-1.5 py-0.5 text-[10px] font-semibold text-stone-400"
+                  className="shrink-0 rounded-md border border-cellar-700 bg-cellar-900 px-1.5 py-0.5 text-[10px] font-semibold text-stone-400"
                 >
                   v{CURRENT_APP_VERSION}
                 </span>
               </div>
-              <p className="text-[11px] text-stone-400">
+              <p className="truncate text-[11px] text-stone-400">
                 Gestion de stock, dégustation & climat
               </p>
             </div>
@@ -515,7 +511,7 @@ export const App: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             <button
               type="button"
               id="btn-auth-header"
@@ -526,7 +522,7 @@ export const App: React.FC = () => {
                   : 'Se connecter au Cloud'
               }
               aria-label="Compte Cloud"
-              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-medium transition ${
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-medium transition sm:gap-2 sm:px-3 sm:py-2.5 ${
                 user
                   ? 'is-authenticated border-gold-500/40 bg-cellar-900/90 text-stone-100 hover:border-gold-400'
                   : 'border-cellar-700 bg-cellar-900/80 text-stone-300 hover:border-bordeaux-500 hover:text-white'
@@ -537,7 +533,7 @@ export const App: React.FC = () => {
               ) : (
                 <Cloud className="h-4 w-4 text-stone-300" />
               )}
-              <span className="btn-text max-w-[120px] truncate">{authLabel}</span>
+              <span className="btn-text max-w-[90px] truncate sm:max-w-[120px]">{authLabel}</span>
               {user && (
                 <span
                   className={`h-2 w-2 rounded-full ${
@@ -555,7 +551,7 @@ export const App: React.FC = () => {
             <button
               type="button"
               onClick={openAddBottle}
-              className="inline-flex items-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-bordeaux-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500 sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Ajouter une bouteille</span>
@@ -565,7 +561,7 @@ export const App: React.FC = () => {
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
+        <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto overscroll-x-contain px-3 sm:px-6">
           {(
             [
               { key: 'inventory', label: 'Inventaire', icon: Wine },
@@ -581,7 +577,7 @@ export const App: React.FC = () => {
                 key={key}
                 type="button"
                 onClick={() => setActiveTab(key)}
-                className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+                className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition sm:gap-2 sm:px-4 sm:text-sm ${
                   active
                     ? 'border-gold-400 text-gold-400'
                     : 'border-transparent text-stone-400 hover:text-stone-200'
@@ -829,7 +825,6 @@ export const App: React.FC = () => {
             onOpenAuthModal={() => setAuthModalOpen(true)}
             onForceSync={handleForceSync}
             onImportReplace={handleImportReplace}
-            onResetDemo={handleResetDemo}
             onClearAll={handleClearAll}
           />
         )}

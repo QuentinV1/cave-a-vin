@@ -144,8 +144,8 @@ export const BottleCard: React.FC<BottleCardProps> = ({
       )}
 
       {/* Footer Actions */}
-      <div className="flex items-center justify-between border-t border-cellar-800/80 bg-cellar-950/50 px-4 py-2.5">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-cellar-800/80 bg-cellar-950/50 px-3 py-2.5 sm:px-4">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={() => onConsumeOne(bottle.id)}
@@ -171,7 +171,7 @@ export const BottleCard: React.FC<BottleCardProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {unitVal !== undefined && (
             <div className="text-right">
               <div className="text-xs font-semibold text-gold-400">

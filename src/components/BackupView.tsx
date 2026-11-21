@@ -9,7 +9,6 @@ import {
   FileJson,
   LayoutGrid,
   RefreshCw,
-  RotateCcw,
   Trash2,
   Upload,
   X,
@@ -25,7 +24,6 @@ interface BackupViewProps {
   onOpenAuthModal?: () => void;
   onForceSync?: () => Promise<void>;
   onImportReplace: (backup: CellarBackupData) => void;
-  onResetDemo: () => void;
   onClearAll: () => void;
 }
 
@@ -36,7 +34,6 @@ export const BackupView: React.FC<BackupViewProps> = ({
   onOpenAuthModal,
   onForceSync,
   onImportReplace,
-  onResetDemo,
   onClearAll,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -135,10 +132,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
 
       {/* Compte Cloud & Synchronisation */}
       {onOpenAuthModal && (
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-cellar-700/80 bg-cellar-900/90 p-5">
-          <div className="space-y-1">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-cellar-700/80 bg-cellar-900/90 p-4 sm:p-5">
+          <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center gap-2 text-gold-400">
-              <Cloud className="h-5 w-5" />
+              <Cloud className="h-5 w-5 shrink-0" />
               <h3 className="font-serif text-lg font-semibold text-stone-100">
                 Compte Cloud & Synchronisation
               </h3>
@@ -146,7 +143,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
             {user ? (
               <div className="text-xs text-stone-300">
                 Connecté en tant que{' '}
-                <strong className="text-stone-100">
+                <strong className="break-all text-stone-100">
                   {user.email || user.displayName || user.uid}
                 </strong>
                 {!user.emailVerified && (
@@ -284,7 +281,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
             <strong>{pendingBackup.readings.length} relevé(s)</strong>. L&apos;import remplacera les
             données actuelles.
           </p>
-          <div className="mt-4 flex justify-end gap-3">
+          <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
             <button
               type="button"
               onClick={() => setPendingBackup(null)}
@@ -307,27 +304,6 @@ export const BackupView: React.FC<BackupViewProps> = ({
       <div className="rounded-2xl border border-cellar-800 bg-cellar-900/60 p-5">
         <h3 className="text-sm font-semibold text-stone-200">Maintenance</h3>
         <div className="mt-3 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Réinitialiser avec les données de démonstration ? Vos données actuelles seront remplacées.',
-                )
-              ) {
-                onResetDemo();
-                setFeedback({
-                  type: 'success',
-                  text: 'Données de démonstration restaurées.',
-                });
-              }
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-cellar-700 bg-cellar-950 px-3.5 py-2 text-xs font-medium text-stone-300 transition hover:border-stone-500 hover:text-white"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Restaurer les données de démo
-          </button>
-
           <button
             type="button"
             onClick={() => {
@@ -371,11 +347,11 @@ export const BackupView: React.FC<BackupViewProps> = ({
 
       {showOtherApps && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-xs sm:p-4"
           onClick={() => setShowOtherApps(false)}
         >
           <div
-            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl"
+            className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-cellar-800 px-5 py-4">
