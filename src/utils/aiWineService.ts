@@ -1,7 +1,21 @@
+import { getAI, getGenerativeModel, GoogleAIBackend, type Part } from 'firebase/ai';
 import { WineColor } from '../types/wine';
+import { app } from './firebase';
 
 const GEMINI_KEY_STORAGE = 'la-cave-a-vin:gemini-api-key';
 const GEMINI_MODEL = 'gemini-2.5-flash';
+
+function getFirebaseAiJsonModel() {
+  if (!app) return null;
+  const ai = getAI(app, { backend: new GoogleAIBackend() });
+  return getGenerativeModel(ai, {
+    model: GEMINI_MODEL,
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+    },
+  });
+}
 
 export interface WineEstimationInput {
   name: string;
@@ -59,7 +73,7 @@ export function setGeminiApiKey(key: string): void {
 }
 
 export function hasGeminiApiKey(): boolean {
-  return getGeminiApiKey().length > 0;
+  return Boolean(app) || getGeminiApiKey().length > 0;
 }
 
 interface AgingRule {
@@ -300,7 +314,21 @@ function sanitizeJsonResponse(rawText: string): string {
     .trim();
 }
 
-export async function callGeminiJson<T>(prompt: string, apiKey: string): Promise<T> {
+export async function callGeminiJson<T>(prompt: string, apiKey = ''): Promise<T> {
+  const aiModel = getFirebaseAiJsonModel();
+  if (aiModel) {
+    const result = await aiModel.generateContent(prompt);
+    const text = result.response.text();
+    if (!text) {
+      throw new Error('Réponse Gemini vide.');
+    }
+    return JSON.parse(sanitizeJsonResponse(text)) as T;
+  }
+
+  if (!apiKey) {
+    throw new Error('Firebase AI Logic non initialisé et aucune clé API fournie.');
+  }
+
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
@@ -343,7 +371,7 @@ export async function estimateWineTastingWindow(
 ): Promise<WineEstimationResult> {
   const localEstimate = estimateWineWindowLocally(input);
   const apiKey = getGeminiApiKey();
-  if (!apiKey) {
+  if (!app && !apiKey) {
     return localEstimate;
   }
 
@@ -436,17 +464,14 @@ export async function identifyWineFromLabelImage(
   imageDataUrl: string,
 ): Promise<LabelIdentificationResult> {
   const apiKey = getGeminiApiKey();
-  if (!apiKey) {
+  const aiModel = getFirebaseAiJsonModel();
+  if (!aiModel && !apiKey) {
     throw new Error(
-      'Clé API Gemini requise pour analyser la photo d’étiquette. Configurez-la dans "Clé Gemini".',
+      'Service Firebase AI Logic indisponible. Vérifiez votre connexion internet.',
     );
   }
 
   const { mimeType, base64 } = parseDataUrl(imageDataUrl);
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 16000);
-
   const currentYear = new Date().getFullYear();
   const prompt = `Tu es un sommelier expert en reconnaissance d'étiquettes de vin. Analyse cette photo d'étiquette et extrais les informations de la bouteille. Année actuelle : ${currentYear}.
 Réponds UNIQUEMENT en JSON valide :
@@ -464,36 +489,48 @@ Réponds UNIQUEMENT en JSON valide :
   "confidenceNote": "<courte phrase sur ce qui a été lu sur l'étiquette>"
 }`;
 
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType, data: base64 } },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: 'application/json',
-        },
-      }),
-    });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 16000);
 
-    if (!response.ok) {
-      const errBody = await response.text().catch(() => '');
-      throw new Error(`Erreur API Gemini (${response.status}): ${errBody.slice(0, 140)}`);
+  try {
+    let text: string | undefined;
+    if (aiModel) {
+      const imagePart: Part = { type: 'inlineData', inlineData: { mimeType, data: base64 } };
+      const result = await aiModel.generateContent([prompt, imagePart]);
+      text = result.response.text();
+    } else {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                { inlineData: { mimeType, data: base64 } },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        throw new Error(`Erreur API Gemini (${response.status}): ${errBody.slice(0, 140)}`);
+      }
+
+      const payload = (await response.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+      text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
     }
 
-    const payload = (await response.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
       throw new Error('Réponse Gemini vide.');
     }
