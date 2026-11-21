@@ -3,7 +3,7 @@ import { WineColor } from '../types/wine';
 import { app } from './firebase';
 
 const GEMINI_KEY_STORAGE = 'la-cave-a-vin:gemini-api-key';
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.8-flash';
 
 function getFirebaseAiJsonModel() {
   if (!app) return null;

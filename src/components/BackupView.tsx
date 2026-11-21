@@ -1,15 +1,18 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { User } from 'firebase/auth';
 import {
   AlertCircle,
   CheckCircle2,
   Cloud,
   Download,
+  ExternalLink,
   FileJson,
+  LayoutGrid,
   RefreshCw,
   RotateCcw,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import { CellarBackupData } from '../types/wine';
 import { CloudState } from '../utils/firestoreStorage';
@@ -42,6 +45,16 @@ export const BackupView: React.FC<BackupViewProps> = ({
     null,
   );
   const [syncingNow, setSyncingNow] = useState(false);
+  const [showOtherApps, setShowOtherApps] = useState(false);
+
+  useEffect(() => {
+    if (!showOtherApps) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowOtherApps(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showOtherApps]);
 
   const handleExport = () => {
     const payload = buildBackupPayload(data);
@@ -337,6 +350,93 @@ export const BackupView: React.FC<BackupViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Mes autres applications */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-cellar-800 bg-cellar-900/60 p-5">
+        <div>
+          <h3 className="text-sm font-semibold text-stone-100">Mes autres applications</h3>
+          <p className="mt-0.5 text-xs text-stone-400">
+            Accéder rapidement aux autres applications web (GitHub Pages).
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowOtherApps(true)}
+          className="inline-flex items-center gap-2 rounded-xl border border-wine-500/40 bg-wine-950/60 px-4 py-2 text-xs font-semibold text-wine-200 transition hover:bg-wine-900/60"
+        >
+          <LayoutGrid className="h-4 w-4" />
+          Mes autres applications
+        </button>
+      </div>
+
+      {showOtherApps && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
+          onClick={() => setShowOtherApps(false)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-cellar-700 bg-cellar-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-cellar-800 px-5 py-4">
+              <h3 className="flex items-center gap-2 font-serif text-lg font-semibold text-stone-100">
+                <LayoutGrid className="h-4 w-4 text-wine-400" />
+                Mes autres applications
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowOtherApps(false)}
+                aria-label="Fermer"
+                className="rounded-lg p-1.5 text-stone-400 hover:bg-cellar-800 hover:text-stone-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 space-y-2.5 overflow-y-auto p-5">
+              <p className="text-xs text-stone-400">
+                Retrouvez toutes les autres applications hébergées sur GitHub Pages.
+              </p>
+              <div className="grid gap-2">
+                {[
+                  { name: "L'Affinoir", desc: "Charcuterie, salaisons & cave d'affinage", url: 'https://quentinv1.github.io/app-charcuterie/' },
+                  { name: 'Pêche France', desc: 'Réglementation, mailles, cartes & carnet de prises', url: 'https://quentinv1.github.io/app-peche/' },
+                  { name: 'App Voyage', desc: "Planificateur d'itinéraire, carte & carnet de voyage", url: 'https://quentinv1.github.io/app-voyage/' },
+                  { name: 'Budget Prévisionnel', desc: 'Budget du foyer, provisions & projections', url: 'https://quentinv1.github.io/budget-previsionnel/' },
+                  { name: 'Checklist Valise', desc: 'Bagages, calculateur de poids & règles IATA', url: 'https://quentinv1.github.io/checklist-valise/' },
+                  { name: 'Livre de recettes', desc: 'Recettes, planning semaine & liste de courses', url: 'https://quentinv1.github.io/livre-recettes/' },
+                  { name: 'Suivi Chasse', desc: 'Carnet de sorties, carte & album trophées', url: 'https://quentinv1.github.io/suivi-chasse/' },
+                  { name: 'Travaux Maison', desc: 'Plan 2D/3D, courses, tâches & entretien', url: 'https://quentinv1.github.io/travaux-maison/' },
+                ].map((app) => (
+                  <a
+                    key={app.url}
+                    href={app.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-cellar-800 bg-cellar-950/70 px-3.5 py-2.5 transition hover:border-wine-500/50 hover:bg-cellar-800/70"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-stone-100">{app.name}</div>
+                      <div className="truncate text-xs text-stone-400">{app.desc}</div>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-wine-300">
+                      Ouvrir <ExternalLink className="h-3.5 w-3.5" />
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-cellar-800 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setShowOtherApps(false)}
+                className="rounded-xl border border-cellar-700 bg-cellar-950 px-4 py-2 text-xs font-medium text-stone-300 hover:text-white"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
