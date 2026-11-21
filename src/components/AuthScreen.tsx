@@ -1,126 +1,127 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { User } from 'firebase/auth';
 import {
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-} from 'firebase/auth';
-import { AlertTriangle, KeyRound, Loader2, Mail, Wine } from 'lucide-react';
-import { auth, googleProvider, isFirebaseConfigured } from '../utils/firebase';
+  AlertTriangle,
+  CheckCircle2,
+  Cloud,
+  KeyRound,
+  Loader2,
+  LogOut,
+  Mail,
+  RefreshCw,
+  X,
+} from 'lucide-react';
+import {
+  connexionEmail,
+  connexionGoogle,
+  formatAuthError,
+  inscriptionEmail,
+  rechargerUtilisateurFirebase,
+  reinitialiserMotDePasse,
+  renvoyerEmailVerification,
+} from '../utils/firebase';
+import { CloudState } from '../utils/firestoreStorage';
 
-function mapAuthError(err: unknown): string {
-  const code =
-    typeof err === 'object' && err !== null && 'code' in err
-      ? String((err as { code?: unknown }).code)
-      : '';
-
-  switch (code) {
-    case 'auth/invalid-email':
-      return 'Adresse e-mail invalide.';
-    case 'auth/user-disabled':
-      return 'Ce compte a été désactivé.';
-    case 'auth/user-not-found':
-    case 'auth/wrong-password':
-    case 'auth/invalid-credential':
-      return 'E-mail ou mot de passe incorrect.';
-    case 'auth/email-already-in-use':
-      return 'Un compte existe déjà avec cette adresse e-mail.';
-    case 'auth/weak-password':
-      return 'Le mot de passe doit contenir au moins 6 caractères.';
-    case 'auth/popup-closed-by-user':
-      return 'La fenêtre de connexion Google a été fermée.';
-    case 'auth/popup-blocked':
-      return 'La fenêtre pop-up a été bloquée par votre navigateur.';
-    case 'auth/unauthorized-domain':
-      return 'Domaine non autorisé dans Firebase Auth (ajoutez ce domaine dans Authentication > Settings > Authorized domains).';
-    case 'auth/too-many-requests':
-      return 'Trop de tentatives. Veuillez réessayer dans quelques minutes.';
-    default:
-      return err instanceof Error ? err.message : 'Erreur lors de la connexion.';
-  }
+export interface CloudAuthModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  user: User | null;
+  cloudState: CloudState;
+  itemSummaryLabel: string;
+  onForceSync: () => Promise<void>;
+  onRestartSync: () => void;
+  onSignOut: () => Promise<void>;
+  onUserReloaded: (user: User | null) => void;
 }
 
-export const AuthScreen: React.FC = () => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
+  isOpen,
+  onClose,
+  user,
+  cloudState,
+  itemSummaryLabel,
+  onForceSync,
+  onRestartSync,
+  onSignOut,
+  onUserReloaded,
+}) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  if (!isFirebaseConfigured || !auth || !googleProvider) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] px-4 text-stone-100">
-        <div className="w-full max-w-lg rounded-2xl border border-amber-700/60 bg-cellar-900/90 p-6 shadow-2xl">
-          <div className="flex items-center gap-3 text-amber-300">
-            <AlertTriangle className="h-6 w-6 shrink-0" />
-            <h1 className="font-serif text-xl font-bold text-stone-100">
-              Configuration Firebase requise
-            </h1>
-          </div>
-          <p className="mt-3 text-sm leading-relaxed text-stone-300">
-            Les variables d&apos;environnement Firebase ne sont pas encore configurées.
-          </p>
-          <ol className="mt-3 list-inside list-decimal space-y-1.5 text-xs text-stone-400">
-            <li>
-              Copiez <code className="rounded bg-cellar-950 px-1.5 py-0.5 text-stone-200">.env.example</code> vers{' '}
-              <code className="rounded bg-cellar-950 px-1.5 py-0.5 text-stone-200">.env.local</code>.
-            </li>
-            <li>
-              Renseignez vos clés Firebase (<code className="text-stone-300">VITE_FIREBASE_*</code>) depuis la console Firebase.
-            </li>
-            <li>
-              Activez <strong>Email/Mot de passe</strong> et <strong>Google</strong> dans Authentication, créez la base Cloud Firestore et déployez{' '}
-              <code className="text-stone-300">firestore.rules</code>.
-            </li>
-          </ol>
-        </div>
-      </div>
-    );
-  }
+  const [verifMsg, setVerifMsg] = useState<string>(
+    'Vérifiez votre boîte mail (et vos courriers indésirables), cliquez sur le lien reçu puis sur « J’ai vérifié ».',
+  );
+  const [verifBusy, setVerifBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [localSyncError, setLocalSyncError] = useState<string | null>(null);
 
-  const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!auth) return;
+  useEffect(() => {
+    if (!isOpen) return;
     setError(null);
     setInfo(null);
+    setLocalSyncError(null);
+    setVerifMsg(
+      'Vérifiez votre boîte mail (et vos courriers indésirables), cliquez sur le lien reçu puis sur « J’ai vérifié ».',
+    );
+  }, [isOpen, user?.uid]);
 
-    if (mode === 'register' && password !== confirmPassword) {
-      setError('Les mots de passe ne correspondent pas.');
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const handleEmailAuth = async (isRegister: boolean) => {
+    setError(null);
+    setInfo(null);
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError('Veuillez saisir votre adresse e-mail.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Le mot de passe doit contenir au moins 6 caractères.');
       return;
     }
 
     setLoading(true);
     try {
-      if (mode === 'login') {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+      if (isRegister) {
+        await inscriptionEmail(trimmedEmail, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await connexionEmail(trimmedEmail, password);
+        onClose();
       }
     } catch (err) {
-      setError(mapAuthError(err));
+      setError(formatAuthError(err));
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    if (!auth || !googleProvider) return;
     setError(null);
     setInfo(null);
     setLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      await connexionGoogle();
+      onClose();
     } catch (err) {
-      setError(mapAuthError(err));
+      setError(formatAuthError(err));
     } finally {
       setLoading(false);
     }
   };
 
   const handleResetPassword = async () => {
-    if (!auth) return;
     setError(null);
     setInfo(null);
     if (!email.trim()) {
@@ -129,176 +130,345 @@ export const AuthScreen: React.FC = () => {
     }
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email.trim());
+      await reinitialiserMotDePasse(email.trim());
       setInfo('E-mail de réinitialisation envoyé. Vérifiez votre boîte de réception.');
     } catch (err) {
-      setError(mapAuthError(err));
+      setError(formatAuthError(err));
     } finally {
       setLoading(false);
     }
   };
 
+  const handleResendVerification = async () => {
+    setVerifBusy(true);
+    try {
+      const sent = await renvoyerEmailVerification();
+      setVerifMsg(
+        sent
+          ? 'E-mail de vérification envoyé ! Vérifiez votre boîte de réception (et les spams), puis cliquez sur « J’ai vérifié ».'
+          : 'Votre adresse e-mail est déjà vérifiée.',
+      );
+    } catch (err) {
+      setVerifMsg(formatAuthError(err));
+    } finally {
+      setVerifBusy(false);
+    }
+  };
+
+  const handleCheckVerified = async () => {
+    setVerifBusy(true);
+    try {
+      const reloaded = await rechargerUtilisateurFirebase();
+      onUserReloaded(reloaded);
+      if (reloaded?.emailVerified) {
+        onRestartSync();
+      } else {
+        setVerifMsg(
+          'Adresse toujours non vérifiée. Cliquez d’abord sur le lien reçu par e-mail.',
+        );
+      }
+    } catch (err) {
+      setVerifMsg(formatAuthError(err));
+    } finally {
+      setVerifBusy(false);
+    }
+  };
+
+  const handleForceSync = async () => {
+    setSyncBusy(true);
+    setLocalSyncError(null);
+    try {
+      await onForceSync();
+    } catch (err) {
+      setLocalSyncError(
+        err instanceof Error ? err.message : 'Impossible de synchroniser.',
+      );
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const renderSyncStatus = () => {
+    if (cloudState.syncStatus === 'syncing' || syncBusy) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-amber-300">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Synchronisation en cours…
+        </span>
+      );
+    }
+    if (cloudState.syncStatus === 'error') {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-red-400">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Erreur de synchronisation
+        </span>
+      );
+    }
+    if (cloudState.initialSyncDone || cloudState.syncStatus === 'synced') {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-emerald-400">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Synchronisé ({itemSummaryLabel})
+        </span>
+      );
+    }
+    return <span className="text-stone-400">Connexion au Cloud…</span>;
+  };
+
+  const displayedSyncError = localSyncError || cloudState.syncError;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] px-4 py-8 text-stone-100">
-      <div className="w-full max-w-md rounded-2xl border border-cellar-800 bg-cellar-900/90 p-6 shadow-2xl backdrop-blur-md sm:p-8">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-gold-500/30 bg-gradient-to-br from-bordeaux-600 to-bordeaux-800 shadow-lg shadow-bordeaux-900/50">
-            <Wine className="h-6 w-6 text-gold-400" />
+    <div
+      id="modal-auth"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-md rounded-2xl border border-cellar-700 bg-cellar-900 p-6 text-stone-100 shadow-2xl">
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between border-b border-cellar-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <Cloud className="h-5 w-5 text-gold-400" />
+            <h2 className="font-serif text-lg font-bold text-stone-100">
+              Compte Cloud La Cave
+            </h2>
           </div>
-          <h1 className="font-serif text-2xl font-bold text-stone-100">La Cave</h1>
-          <p className="mt-1 text-xs text-stone-400">
-            Connectez-vous pour retrouver votre cave sur tous vos appareils
-          </p>
-        </div>
-
-        {/* Tabs */}
-        <div className="mb-5 grid grid-cols-2 rounded-xl border border-cellar-800 bg-cellar-950/70 p-1 text-sm">
           <button
             type="button"
-            onClick={() => {
-              setMode('login');
-              setError(null);
-              setInfo(null);
-            }}
-            className={`rounded-lg py-2 font-medium transition ${
-              mode === 'login'
-                ? 'bg-bordeaux-600 text-white shadow'
-                : 'text-stone-400 hover:text-stone-200'
-            }`}
+            onClick={onClose}
+            aria-label="Fermer"
+            className="rounded-lg p-1.5 text-stone-400 transition hover:bg-cellar-800 hover:text-white"
           >
-            Connexion
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode('register');
-              setError(null);
-              setInfo(null);
-            }}
-            className={`rounded-lg py-2 font-medium transition ${
-              mode === 'register'
-                ? 'bg-bordeaux-600 text-white shadow'
-                : 'text-stone-400 hover:text-stone-200'
-            }`}
-          >
-            Créer un compte
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {error && (
-          <div className="mb-4 rounded-xl border border-red-700/60 bg-red-950/60 px-3.5 py-2.5 text-xs text-red-200">
-            {error}
-          </div>
-        )}
-        {info && (
-          <div className="mb-4 rounded-xl border border-emerald-700/60 bg-emerald-950/50 px-3.5 py-2.5 text-xs text-emerald-200">
-            {info}
-          </div>
-        )}
+        {!user ? (
+          /* Panneau déconnecté */
+          <div id="auth-logged-out-panel">
+            <p className="mb-4 text-xs leading-relaxed text-stone-400">
+              L&apos;application fonctionne hors-ligne en local. Connectez-vous pour
+              synchroniser vos caves, bouteilles, relevés et dégustations entre tous
+              vos appareils.
+            </p>
 
-        <form onSubmit={handleEmailSubmit} className="space-y-3.5">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-stone-300">
-              Adresse e-mail
-            </label>
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
-              <input
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="vous@exemple.fr"
-                className="w-full rounded-xl border border-cellar-700 bg-cellar-950 py-2.5 pl-9 pr-3 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
-              />
-            </div>
-          </div>
+            {error && (
+              <div
+                id="auth-error-msg"
+                className="mb-3 rounded-xl border border-red-700/60 bg-red-950/60 px-3.5 py-2.5 text-xs text-red-200"
+              >
+                {error}
+              </div>
+            )}
+            {info && (
+              <div className="mb-3 rounded-xl border border-emerald-700/60 bg-emerald-950/50 px-3.5 py-2.5 text-xs text-emerald-200">
+                {info}
+              </div>
+            )}
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-stone-300">
-              Mot de passe
-            </label>
-            <div className="relative">
-              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
-              <input
-                type="password"
-                required
-                minLength={6}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full rounded-xl border border-cellar-700 bg-cellar-950 py-2.5 pl-9 pr-3 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
-              />
-            </div>
-          </div>
+            <div className="space-y-3">
+              <div>
+                <label
+                  htmlFor="auth-email"
+                  className="mb-1 block text-xs font-medium text-stone-300"
+                >
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
+                  <input
+                    id="auth-email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="prenom@exemple.fr"
+                    className="w-full rounded-xl border border-cellar-700 bg-cellar-950 py-2.5 pl-9 pr-3 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
+                  />
+                </div>
+              </div>
 
-          {mode === 'register' && (
-            <div>
-              <label className="mb-1 block text-xs font-medium text-stone-300">
-                Confirmer le mot de passe
-              </label>
-              <div className="relative">
-                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-cellar-700 bg-cellar-950 py-2.5 pl-9 pr-3 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
-                />
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label
+                    htmlFor="auth-password"
+                    className="block text-xs font-medium text-stone-300"
+                  >
+                    Mot de passe (6 car. min)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    disabled={loading}
+                    className="text-[11px] text-gold-400 hover:text-gold-300 disabled:opacity-50"
+                  >
+                    Mot de passe oublié ?
+                  </button>
+                </div>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
+                  <input
+                    id="auth-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleEmailAuth(false);
+                      }
+                    }}
+                    placeholder="••••••••"
+                    className="w-full rounded-xl border border-cellar-700 bg-cellar-950 py-2.5 pl-9 pr-3 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleEmailAuth(false)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500 disabled:opacity-60"
+                >
+                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Se connecter
+                </button>
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleEmailAuth(true)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cellar-700 bg-cellar-950 px-4 py-2.5 text-sm font-medium text-stone-200 transition hover:border-bordeaux-500 hover:bg-cellar-800 disabled:opacity-60"
+                >
+                  Créer un compte
+                </button>
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleGoogleLogin()}
+                  className="inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-cellar-700 bg-cellar-950 px-4 py-2.5 text-sm font-medium text-stone-100 transition hover:border-stone-500 hover:bg-cellar-800/70 disabled:opacity-60"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
+                    />
+                  </svg>
+                  Continuer avec Google
+                </button>
               </div>
             </div>
-          )}
+          </div>
+        ) : (
+          /* Panneau compte connecté */
+          <div id="auth-logged-in-panel" className="space-y-3.5">
+            <div className="rounded-xl border border-cellar-800 bg-cellar-950/80 p-3.5">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                Connecté en tant que
+              </div>
+              <div
+                id="auth-connected-email"
+                className="mt-1 break-all text-sm font-bold text-stone-100"
+              >
+                {user.email || user.displayName || user.uid}
+              </div>
+              <div id="auth-sync-status" className="mt-2 text-xs font-medium">
+                {renderSyncStatus()}
+              </div>
+            </div>
 
-          {mode === 'login' && (
-            <div className="flex justify-end">
+            {displayedSyncError && (
+              <div
+                id="auth-sync-error-msg"
+                className="rounded-xl border border-red-700/60 bg-red-950/60 px-3.5 py-2.5 text-xs text-red-200"
+              >
+                {displayedSyncError}
+              </div>
+            )}
+
+            {!user.emailVerified && (
+              <div
+                id="auth-unverified-box"
+                className="rounded-xl border border-amber-600/40 bg-amber-950/40 p-3.5 text-xs"
+              >
+                <div className="mb-1 font-bold text-amber-300">
+                  Adresse e-mail non vérifiée
+                </div>
+                <div id="auth-unverified-msg" className="mb-3 text-stone-300">
+                  {verifMsg}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    id="btn-resend-verif"
+                    disabled={verifBusy}
+                    onClick={() => void handleResendVerification()}
+                    className="rounded-lg border border-cellar-700 bg-cellar-900 px-3 py-1.5 text-xs font-medium text-stone-200 transition hover:border-amber-500/50 hover:text-white disabled:opacity-50"
+                  >
+                    Renvoyer l&apos;e-mail de vérification
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-check-verif"
+                    disabled={verifBusy}
+                    onClick={() => void handleCheckVerified()}
+                    className="rounded-lg bg-bordeaux-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-bordeaux-500 disabled:opacity-50"
+                  >
+                    J&apos;ai vérifié
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 pt-1">
               <button
                 type="button"
-                onClick={handleResetPassword}
-                disabled={loading}
-                className="text-xs text-gold-400 hover:text-gold-300 disabled:opacity-50"
+                id="btn-force-sync"
+                disabled={syncBusy || cloudState.syncStatus === 'syncing'}
+                onClick={() => void handleForceSync()}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500 disabled:opacity-60"
               >
-                Mot de passe oublié ?
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    syncBusy || cloudState.syncStatus === 'syncing'
+                      ? 'animate-spin'
+                      : ''
+                  }`}
+                />
+                Synchroniser maintenant
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void onSignOut()}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-900/60 bg-rose-950/40 px-4 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-900/60"
+              >
+                <LogOut className="h-4 w-4" />
+                Se déconnecter
               </button>
             </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500 disabled:opacity-60"
-          >
-            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            {mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
-          </button>
-        </form>
-
-        <div className="my-5 flex items-center gap-3 text-xs text-stone-500">
-          <div className="h-px flex-1 bg-cellar-800" />
-          <span>ou</span>
-          <div className="h-px flex-1 bg-cellar-800" />
-        </div>
-
-        <button
-          type="button"
-          onClick={handleGoogleLogin}
-          disabled={loading}
-          className="inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-cellar-700 bg-cellar-950 px-4 py-2.5 text-sm font-medium text-stone-100 transition hover:border-stone-500 hover:bg-cellar-800/70 disabled:opacity-60"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="#EA4335"
-              d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.7 3.5 14.6 2.5 12 2.5 6.8 2.5 2.5 6.8 2.5 12S6.8 21.5 12 21.5c6.9 0 9.1-4.8 9.1-7.3 0-.5-.1-.9-.1-1.3H12z"
-            />
-          </svg>
-          Continuer avec Google
-        </button>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+
+export const AuthScreen = CloudAuthModal;

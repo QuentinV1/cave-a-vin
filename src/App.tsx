@@ -1,13 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { User } from 'firebase/auth';
 import {
   AlertTriangle,
   ArrowUpDown,
+  Cloud,
   Database,
   Flame,
   Grid3X3,
-  Loader2,
-  LogOut,
   Plus,
   Search,
   Sparkles,
@@ -24,20 +23,17 @@ import {
   TastingStatus,
   WineColor,
 } from './types/wine';
-import { AppStateData, createSeedData } from './utils/storage';
-import { auth, isFirebaseConfigured } from './utils/firebase';
+import { AppStateData, createSeedData, loadAppData, saveAppData } from './utils/storage';
+import { deconnexionFirebase, observerAuth } from './utils/firebase';
 import {
-  deleteBottleFromCloud,
-  deleteCellarFromCloud,
-  deleteReadingFromCloud,
-  deleteTastingFromCloud,
-  replaceAllUserDataInCloud,
-  saveBottleToCloud,
-  saveCellarToCloud,
-  saveReadingToCloud,
-  saveTastingToCloud,
-  subscribeUserData,
-  updateBottleFieldsInCloud,
+  activerSyncCloud,
+  arreterListenersFirestore,
+  cloudState as initialCloudState,
+  CloudState,
+  forcerSyncCloud,
+  planifierPushCloud,
+  reinitialiserEtatCloud,
+  subscribeCloudState,
 } from './utils/firestoreStorage';
 import {
   computeTastingStatus,
@@ -46,7 +42,7 @@ import {
   generateId,
   WINE_COLOR_LABELS,
 } from './utils/wineUtils';
-import { AuthScreen } from './components/AuthScreen';
+import { CloudAuthModal } from './components/AuthScreen';
 import { BottleCard } from './components/BottleCard';
 import { BottleModal } from './components/BottleModal';
 import { CellarModal } from './components/CellarModal';
@@ -60,6 +56,8 @@ import { TastingNoteModal } from './components/TastingNoteModal';
 type TabKey = 'inventory' | 'plan' | 'cellars' | 'tasting' | 'backup';
 type SortKey = 'name' | 'vintage_desc' | 'vintage_asc' | 'price_desc' | 'quantity_desc';
 
+const CURRENT_APP_VERSION = '1.1.0';
+
 const EMPTY_DATA: AppStateData = {
   cellars: [],
   readings: [],
@@ -68,10 +66,16 @@ const EMPTY_DATA: AppStateData = {
 };
 
 export const App: React.FC = () => {
+  const [data, setData] = useState<AppStateData>(() => loadAppData());
+  const dataRef = useRef<AppStateData>(data);
+  dataRef.current = data;
+
   const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState<boolean>(isFirebaseConfigured);
-  const [dataLoading, setDataLoading] = useState<boolean>(false);
-  const [data, setData] = useState<AppStateData>(EMPTY_DATA);
+  const [cloudStateSnap, setCloudStateSnap] = useState<CloudState>({
+    ...initialCloudState,
+  });
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
   const [storageError, setStorageError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('inventory');
 
@@ -93,41 +97,65 @@ export const App: React.FC = () => {
   const [readingModalCellar, setReadingModalCellar] = useState<Cellar | null>(null);
   const [tastingModalBottle, setTastingModalBottle] = useState<Bottle | null>(null);
 
-  useEffect(() => {
-    if (!isFirebaseConfigured || !auth) {
-      setAuthLoading(false);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setAuthLoading(false);
-      if (!firebaseUser) {
-        setData(EMPTY_DATA);
-        setDataLoading(false);
+  const applyLocalDataFromCloud = useCallback((nextData: AppStateData) => {
+    dataRef.current = nextData;
+    setData(nextData);
+  }, []);
+
+  const sauvegarderDonnees = useCallback(
+    (nextData: AppStateData, skipCloud = false) => {
+      dataRef.current = nextData;
+      setData(nextData);
+      const saveResult = saveAppData(nextData);
+      if (!saveResult.ok) {
+        setStorageError(
+          saveResult.error ?? 'Impossible de sauvegarder les données localement.',
+        );
+      } else {
+        setStorageError(null);
       }
-    });
-    return unsubscribe;
+      if (!skipCloud) {
+        planifierPushCloud(() => dataRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return subscribeCloudState(setCloudStateSnap);
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    setDataLoading(true);
-    setStorageError(null);
-    const unsubscribe = subscribeUserData(
-      user.uid,
-      (nextData, isInitialLoadComplete) => {
-        setData(nextData);
-        if (isInitialLoadComplete) {
-          setDataLoading(false);
-        }
-      },
-      (errMsg) => {
-        setStorageError(errMsg);
-        setDataLoading(false);
-      },
-    );
-    return unsubscribe;
-  }, [user]);
+    const unsubscribe = observerAuth((firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        activerSyncCloud(() => dataRef.current, applyLocalDataFromCloud);
+      } else {
+        arreterListenersFirestore();
+        reinitialiserEtatCloud();
+      }
+    });
+    return () => {
+      unsubscribe();
+      arreterListenersFirestore();
+    };
+  }, [applyLocalDataFromCloud]);
+
+  const handleRestartSync = useCallback(() => {
+    activerSyncCloud(() => dataRef.current, applyLocalDataFromCloud);
+  }, [applyLocalDataFromCloud]);
+
+  const handleForceSync = useCallback(async () => {
+    await forcerSyncCloud(dataRef.current);
+  }, []);
+
+  const handleSignOutCloud = useCallback(async () => {
+    if (!window.confirm('Se déconnecter du compte Cloud ?')) return;
+    arreterListenersFirestore();
+    await deconnexionFirebase();
+    reinitialiserEtatCloud();
+    setAuthModalOpen(false);
+  }, []);
 
   // Global KPIs
   const stats = useMemo(() => {
@@ -226,23 +254,16 @@ export const App: React.FC = () => {
     return { count, value };
   }, [filteredBottles]);
 
-  const runCloudAction = async (action: () => Promise<void>, fallbackMessage: string) => {
-    try {
-      setStorageError(null);
-      await action();
-    } catch (err) {
-      setStorageError(err instanceof Error ? err.message : fallbackMessage);
-    }
-  };
-
-  // Bottle CRUD
+  // Bottle CRUD (Local-first + debounced cloud push)
   const handleSaveBottle = (
     payload: Omit<Bottle, 'id' | 'createdAt' | 'updatedAt'>,
     existingId?: string,
   ) => {
-    if (!user) return;
+    const current = dataRef.current;
     const now = new Date().toISOString();
-    const existing = existingId ? data.bottles.find((b) => b.id === existingId) : undefined;
+    const existing = existingId
+      ? current.bottles.find((b) => b.id === existingId)
+      : undefined;
     const bottle: Bottle = existing
       ? { ...existing, ...payload, updatedAt: now }
       : {
@@ -251,42 +272,44 @@ export const App: React.FC = () => {
           createdAt: now,
           updatedAt: now,
         };
-    void runCloudAction(
-      () => saveBottleToCloud(user.uid, bottle),
-      'Impossible de sauvegarder la bouteille.',
-    );
+
+    const nextBottles = existing
+      ? current.bottles.map((b) => (b.id === bottle.id ? bottle : b))
+      : [bottle, ...current.bottles];
+
+    sauvegarderDonnees({ ...current, bottles: nextBottles });
   };
 
   const handleAdjustQuantity = (bottleId: string, delta: number) => {
-    if (!user) return;
-    const bottle = data.bottles.find((b) => b.id === bottleId);
+    const current = dataRef.current;
+    const bottle = current.bottles.find((b) => b.id === bottleId);
     if (!bottle) return;
     const now = new Date().toISOString();
     const quantity = Math.max(0, bottle.quantity + delta);
-    void runCloudAction(
-      () => updateBottleFieldsInCloud(user.uid, bottleId, { quantity, updatedAt: now }),
-      'Impossible de mettre à jour la quantité.',
+    const nextBottles = current.bottles.map((b) =>
+      b.id === bottleId ? { ...b, quantity, updatedAt: now } : b,
     );
+    sauvegarderDonnees({ ...current, bottles: nextBottles });
   };
 
   const handleDeleteBottle = (bottleId: string) => {
-    if (!user) return;
-    const bottle = data.bottles.find((b) => b.id === bottleId);
+    const current = dataRef.current;
+    const bottle = current.bottles.find((b) => b.id === bottleId);
     if (!bottle) return;
     if (!window.confirm(`Supprimer « ${bottle.name} » de votre cave ?`)) return;
-    void runCloudAction(
-      () => deleteBottleFromCloud(user.uid, bottleId),
-      'Impossible de supprimer la bouteille.',
-    );
+    const nextBottles = current.bottles.filter((b) => b.id !== bottleId);
+    sauvegarderDonnees({ ...current, bottles: nextBottles });
   };
 
-  // Cellar CRUD
+  // Cellar CRUD (Local-first + debounced cloud push)
   const handleSaveCellar = (
     payload: Omit<Cellar, 'id' | 'createdAt'>,
     existingId?: string,
   ) => {
-    if (!user) return;
-    const existing = existingId ? data.cellars.find((c) => c.id === existingId) : undefined;
+    const current = dataRef.current;
+    const existing = existingId
+      ? current.cellars.find((c) => c.id === existingId)
+      : undefined;
     const cellar: Cellar = existing
       ? { ...existing, ...payload }
       : {
@@ -294,38 +317,36 @@ export const App: React.FC = () => {
           id: generateId('cellar'),
           createdAt: new Date().toISOString(),
         };
-    void runCloudAction(
-      () => saveCellarToCloud(user.uid, cellar),
-      'Impossible de sauvegarder la cave.',
-    );
+    const nextCellars = existing
+      ? current.cellars.map((c) => (c.id === cellar.id ? cellar : c))
+      : [...current.cellars, cellar];
+
+    sauvegarderDonnees({ ...current, cellars: nextCellars });
   };
 
   const handleDeleteCellar = (cellarId: string) => {
-    if (!user) return;
-    const cellar = data.cellars.find((c) => c.id === cellarId);
+    const current = dataRef.current;
+    const cellar = current.cellars.find((c) => c.id === cellarId);
     if (!cellar) return;
-    const linkedBottleIds = data.bottles
-      .filter((b) => b.cellarId === cellarId)
-      .map((b) => b.id);
-    const linkedReadingIds = data.readings
-      .filter((r) => r.cellarId === cellarId)
-      .map((r) => r.id);
+    const linkedBottles = current.bottles.filter((b) => b.cellarId === cellarId);
     const msg =
-      linkedBottleIds.length > 0
-        ? `Supprimer « ${cellar.name} » ainsi que ses ${linkedBottleIds.length} référence(s) et ses relevés ?`
+      linkedBottles.length > 0
+        ? `Supprimer « ${cellar.name} » ainsi que ses ${linkedBottles.length} référence(s) et ses relevés ?`
         : `Supprimer la cave « ${cellar.name} » et ses relevés ?`;
     if (!window.confirm(msg)) return;
 
-    void runCloudAction(
-      () => deleteCellarFromCloud(user.uid, cellarId, linkedReadingIds, linkedBottleIds),
-      'Impossible de supprimer la cave.',
-    );
+    sauvegarderDonnees({
+      ...current,
+      cellars: current.cellars.filter((c) => c.id !== cellarId),
+      bottles: current.bottles.filter((b) => b.cellarId !== cellarId),
+      readings: current.readings.filter((r) => r.cellarId !== cellarId),
+    });
     if (selectedCellarId === cellarId) {
       setSelectedCellarId('all');
     }
   };
 
-  // Readings CRUD
+  // Readings CRUD (Local-first + debounced cloud push)
   const handleSaveReading = (payload: {
     cellarId: string;
     temperature: number;
@@ -333,93 +354,74 @@ export const App: React.FC = () => {
     recordedAt: string;
     note?: string;
   }) => {
-    if (!user) return;
+    const current = dataRef.current;
     const newReading: CellarReading = {
       ...payload,
       id: generateId('read'),
     };
-    void runCloudAction(
-      () => saveReadingToCloud(user.uid, newReading),
-      'Impossible de sauvegarder le relevé.',
-    );
+    sauvegarderDonnees({
+      ...current,
+      readings: [newReading, ...current.readings],
+    });
   };
 
   const handleDeleteReading = (readingId: string) => {
-    if (!user) return;
-    void runCloudAction(
-      () => deleteReadingFromCloud(user.uid, readingId),
-      'Impossible de supprimer le relevé.',
-    );
+    const current = dataRef.current;
+    sauvegarderDonnees({
+      ...current,
+      readings: current.readings.filter((r) => r.id !== readingId),
+    });
   };
 
-  // Tastings & Rack CRUD
+  // Tastings & Rack CRUD (Local-first + debounced cloud push)
   const handleSaveTasting = (entry: Omit<TastingEntry, 'id'>) => {
-    if (!user) return;
+    const current = dataRef.current;
     const newEntry: TastingEntry = {
       ...entry,
       id: generateId('taste'),
     };
-    void runCloudAction(
-      () => saveTastingToCloud(user.uid, newEntry),
-      'Impossible de sauvegarder la dégustation.',
-    );
+    sauvegarderDonnees({
+      ...current,
+      tastings: [newEntry, ...current.tastings],
+    });
   };
 
   const handleDeleteTasting = (tastingId: string) => {
-    if (!user) return;
-    void runCloudAction(
-      () => deleteTastingFromCloud(user.uid, tastingId),
-      'Impossible de supprimer la dégustation.',
-    );
+    const current = dataRef.current;
+    sauvegarderDonnees({
+      ...current,
+      tastings: current.tastings.filter((t) => t.id !== tastingId),
+    });
   };
 
   const handleAssignRack = (bottleId: string, rackLocation: string) => {
-    if (!user) return;
+    const current = dataRef.current;
     const now = new Date().toISOString();
-    void runCloudAction(
-      () =>
-        updateBottleFieldsInCloud(user.uid, bottleId, {
-          rackLocation,
-          updatedAt: now,
-        }),
-      "Impossible d'assigner l'emplacement.",
+    const nextBottles = current.bottles.map((b) =>
+      b.id === bottleId
+        ? { ...b, rackLocation: rackLocation || undefined, updatedAt: now }
+        : b,
     );
+    sauvegarderDonnees({ ...current, bottles: nextBottles });
   };
 
-  // Backup handlers
+  // Backup handlers (Local-first + debounced cloud push)
   const handleImportReplace = (backup: CellarBackupData) => {
-    if (!user) return;
     const nextData: AppStateData = {
       cellars: backup.cellars,
       readings: backup.readings,
       bottles: backup.bottles,
       tastings: backup.tastings ?? [],
     };
-    void runCloudAction(
-      () => replaceAllUserDataInCloud(user.uid, data, nextData),
-      "Impossible d'importer la sauvegarde.",
-    );
+    sauvegarderDonnees(nextData);
   };
 
   const handleResetDemo = () => {
-    if (!user) return;
-    void runCloudAction(
-      () => replaceAllUserDataInCloud(user.uid, data, createSeedData()),
-      'Impossible de charger les données de démonstration.',
-    );
+    sauvegarderDonnees(createSeedData());
   };
 
   const handleClearAll = () => {
-    if (!user) return;
-    void runCloudAction(
-      () => replaceAllUserDataInCloud(user.uid, data, EMPTY_DATA),
-      'Impossible de vider votre cave.',
-    );
-  };
-
-  const handleSignOut = async () => {
-    if (!auth) return;
-    await signOut(auth);
+    sauvegarderDonnees(EMPTY_DATA);
   };
 
   const openAddBottle = () => {
@@ -434,27 +436,13 @@ export const App: React.FC = () => {
     setBottleModalOpen(true);
   };
 
-  if (authLoading) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] text-stone-300">
-        <Loader2 className="h-8 w-8 animate-spin text-gold-400" />
-        <p className="text-sm">Vérification de votre session...</p>
-      </div>
-    );
-  }
+  const authLabel = user
+    ? (user.email || user.displayName || 'Cloud').split('@')[0]
+    : 'Connexion';
 
-  if (!isFirebaseConfigured || !user) {
-    return <AuthScreen />;
-  }
-
-  if (dataLoading) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] text-stone-300">
-        <Loader2 className="h-8 w-8 animate-spin text-gold-400" />
-        <p className="text-sm">Chargement de votre cave...</p>
-      </div>
-    );
-  }
+  const itemSummaryLabel = `${data.bottles.length} référence${
+    data.bottles.length > 1 ? 's' : ''
+  }, ${data.cellars.length} cave${data.cellars.length > 1 ? 's' : ''}`;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] text-stone-100">
@@ -466,9 +454,17 @@ export const App: React.FC = () => {
               <Wine className="h-5 w-5 text-gold-400" />
             </div>
             <div>
-              <h1 className="font-serif text-xl font-bold tracking-tight text-stone-100 sm:text-2xl">
-                La Cave
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="font-serif text-xl font-bold tracking-tight text-stone-100 sm:text-2xl">
+                  La Cave
+                </h1>
+                <span
+                  id="header-version-badge"
+                  className="rounded-md border border-cellar-700 bg-cellar-900 px-1.5 py-0.5 text-[10px] font-semibold text-stone-400"
+                >
+                  v{CURRENT_APP_VERSION}
+                </span>
+              </div>
               <p className="text-[11px] text-stone-400">
                 Gestion de stock, dégustation & climat
               </p>
@@ -522,32 +518,48 @@ export const App: React.FC = () => {
           <div className="flex items-center gap-2.5">
             <button
               type="button"
+              id="btn-auth-header"
+              onClick={() => setAuthModalOpen(true)}
+              title={
+                user
+                  ? `Connecté : ${user.email || user.uid}`
+                  : 'Se connecter au Cloud'
+              }
+              aria-label="Compte Cloud"
+              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-medium transition ${
+                user
+                  ? 'is-authenticated border-gold-500/40 bg-cellar-900/90 text-stone-100 hover:border-gold-400'
+                  : 'border-cellar-700 bg-cellar-900/80 text-stone-300 hover:border-bordeaux-500 hover:text-white'
+              }`}
+            >
+              {user ? (
+                <UserIcon className="h-4 w-4 text-gold-400" />
+              ) : (
+                <Cloud className="h-4 w-4 text-stone-300" />
+              )}
+              <span className="btn-text max-w-[120px] truncate">{authLabel}</span>
+              {user && (
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    cloudStateSnap.syncStatus === 'error'
+                      ? 'bg-red-400'
+                      : !user.emailVerified ||
+                          cloudStateSnap.syncStatus === 'syncing'
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-400'
+                  }`}
+                />
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={openAddBottle}
               className="inline-flex items-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Ajouter une bouteille</span>
               <span className="sm:hidden">Ajouter</span>
-            </button>
-
-            <div
-              className="hidden items-center gap-2 rounded-xl border border-cellar-800 bg-cellar-900/80 px-3 py-2 text-xs text-stone-300 md:flex"
-              title={user.email ?? undefined}
-            >
-              <UserIcon className="h-3.5 w-3.5 text-gold-400" />
-              <span className="max-w-[140px] truncate">
-                {user.displayName || user.email || 'Utilisateur'}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSignOut}
-              title="Se déconnecter"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-cellar-800 bg-cellar-900/80 px-3 py-2.5 text-xs font-medium text-stone-300 transition hover:border-bordeaux-600 hover:text-white"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Déconnexion</span>
             </button>
           </div>
         </div>
@@ -812,6 +824,10 @@ export const App: React.FC = () => {
         {activeTab === 'backup' && (
           <BackupView
             data={data}
+            user={user}
+            cloudState={cloudStateSnap}
+            onOpenAuthModal={() => setAuthModalOpen(true)}
+            onForceSync={handleForceSync}
             onImportReplace={handleImportReplace}
             onResetDemo={handleResetDemo}
             onClearAll={handleClearAll}
@@ -820,6 +836,18 @@ export const App: React.FC = () => {
       </main>
 
       {/* Modals */}
+      <CloudAuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        user={user}
+        cloudState={cloudStateSnap}
+        itemSummaryLabel={itemSummaryLabel}
+        onForceSync={handleForceSync}
+        onRestartSync={handleRestartSync}
+        onSignOut={handleSignOutCloud}
+        onUserReloaded={setUser}
+      />
+
       <BottleModal
         isOpen={bottleModalOpen}
         editingBottle={editingBottle}

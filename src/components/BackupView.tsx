@@ -1,18 +1,26 @@
 import React, { useRef, useState } from 'react';
+import { User } from 'firebase/auth';
 import {
   AlertCircle,
   CheckCircle2,
+  Cloud,
   Download,
   FileJson,
+  RefreshCw,
   RotateCcw,
   Trash2,
   Upload,
 } from 'lucide-react';
 import { CellarBackupData } from '../types/wine';
+import { CloudState } from '../utils/firestoreStorage';
 import { AppStateData, buildBackupPayload, parseBackupPayload } from '../utils/storage';
 
 interface BackupViewProps {
   data: AppStateData;
+  user?: User | null;
+  cloudState?: CloudState;
+  onOpenAuthModal?: () => void;
+  onForceSync?: () => Promise<void>;
   onImportReplace: (backup: CellarBackupData) => void;
   onResetDemo: () => void;
   onClearAll: () => void;
@@ -20,6 +28,10 @@ interface BackupViewProps {
 
 export const BackupView: React.FC<BackupViewProps> = ({
   data,
+  user,
+  cloudState,
+  onOpenAuthModal,
+  onForceSync,
   onImportReplace,
   onResetDemo,
   onClearAll,
@@ -29,6 +41,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null,
   );
+  const [syncingNow, setSyncingNow] = useState(false);
 
   const handleExport = () => {
     const payload = buildBackupPayload(data);
@@ -76,16 +89,96 @@ export const BackupView: React.FC<BackupViewProps> = ({
     setPendingBackup(null);
   };
 
+  const handleSyncClick = async () => {
+    if (!onForceSync) return;
+    setSyncingNow(true);
+    setFeedback(null);
+    try {
+      await onForceSync();
+      setFeedback({
+        type: 'success',
+        text: 'Synchronisation Cloud effectuée avec succès.',
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Erreur de synchronisation Cloud.',
+      });
+    } finally {
+      setSyncingNow(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <h2 className="font-serif text-2xl font-semibold text-stone-100">
-          Sauvegarde & Données Cloud
+          Sauvegarde & Synchronisation Cloud
         </h2>
         <p className="text-sm text-stone-400">
-          Toutes vos données (caves, relevés T°/hygro, bouteilles et photos) sont stockées dans votre espace personnel et synchronisées sur vos appareils.
+          Vos données sont enregistrées instantanément sur cet appareil (local-first) et synchronisées avec votre compte Cloud si vous êtes connecté.
         </p>
       </div>
+
+      {/* Compte Cloud & Synchronisation */}
+      {onOpenAuthModal && (
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-cellar-700/80 bg-cellar-900/90 p-5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-gold-400">
+              <Cloud className="h-5 w-5" />
+              <h3 className="font-serif text-lg font-semibold text-stone-100">
+                Compte Cloud & Synchronisation
+              </h3>
+            </div>
+            {user ? (
+              <div className="text-xs text-stone-300">
+                Connecté en tant que{' '}
+                <strong className="text-stone-100">
+                  {user.email || user.displayName || user.uid}
+                </strong>
+                {!user.emailVerified && (
+                  <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+                    E-mail non vérifié
+                  </span>
+                )}
+                {cloudState?.syncStatus === 'error' && cloudState.syncError && (
+                  <div className="mt-1 text-red-300">{cloudState.syncError}</div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-stone-400">
+                Mode local actif. Connectez-vous pour synchroniser votre cave entre vos appareils.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {user && onForceSync && (
+              <button
+                type="button"
+                disabled={syncingNow || cloudState?.syncStatus === 'syncing'}
+                onClick={() => void handleSyncClick()}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-cellar-700 bg-cellar-950 px-3.5 py-2 text-xs font-medium text-stone-200 transition hover:border-bordeaux-500 hover:text-white disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${
+                    syncingNow || cloudState?.syncStatus === 'syncing' ? 'animate-spin' : ''
+                  }`}
+                />
+                Synchroniser maintenant
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onOpenAuthModal}
+              className="inline-flex items-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-bordeaux-500"
+            >
+              <Cloud className="h-3.5 w-3.5" />
+              {user ? 'Gérer le compte Cloud' : 'Se connecter au Cloud'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {feedback && (
         <div
@@ -143,7 +236,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
               </h3>
             </div>
             <p className="text-xs leading-relaxed text-stone-400">
-              Restaurez une sauvegarde précédemment exportée. Vous pourrez vérifier son contenu avant de l'appliquer.
+              Restaurez une sauvegarde précédemment exportée. Vous pourrez vérifier son contenu avant de l&apos;appliquer.
             </p>
           </div>
 
@@ -175,7 +268,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
             Ce fichier contient{' '}
             <strong>{pendingBackup.cellars.length} cave(s)</strong>,{' '}
             <strong>{pendingBackup.bottles.length} référence(s)</strong> et{' '}
-            <strong>{pendingBackup.readings.length} relevé(s)</strong>. L'import remplacera les
+            <strong>{pendingBackup.readings.length} relevé(s)</strong>. L&apos;import remplacera les
             données actuelles.
           </p>
           <div className="mt-4 flex justify-end gap-3">
@@ -233,7 +326,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
                 onClearAll();
                 setFeedback({
                   type: 'success',
-                  text: 'Toutes les données locales ont été effacées.',
+                  text: 'Toutes les données ont été effacées.',
                 });
               }
             }}
