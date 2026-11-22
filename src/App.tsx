@@ -24,7 +24,8 @@ import {
   WineColor,
 } from './types/wine';
 import { AppStateData, loadAppData, saveAppData } from './utils/storage';
-import { deconnexionFirebase, observerAuth } from './utils/firebase';
+import { db, deconnexionFirebase, observerAuth } from './utils/firebase';
+import { clearHubAuthCache, verifyUserAccess } from './utils/accessControl';
 import {
   activerSyncCloud,
   arreterListenersFirestore,
@@ -43,6 +44,7 @@ import {
   WINE_COLOR_LABELS,
 } from './utils/wineUtils';
 import { CloudAuthModal } from './components/AuthScreen';
+import { AccessGate, AccessGateState } from './components/AccessGate';
 import { BottleCard } from './components/BottleCard';
 import { BottleModal } from './components/BottleModal';
 import { CellarModal } from './components/CellarModal';
@@ -71,6 +73,8 @@ export const App: React.FC = () => {
   dataRef.current = data;
 
   const [user, setUser] = useState<User | null>(null);
+  const [gate, setGate] = useState<AccessGateState>({ phase: 'loading' });
+  const userRef = useRef<User | null>(null);
   const [cloudStateSnap, setCloudStateSnap] = useState<CloudState>({
     ...initialCloudState,
   });
@@ -125,21 +129,54 @@ export const App: React.FC = () => {
     return subscribeCloudState(setCloudStateSnap);
   }, []);
 
-  useEffect(() => {
-    const unsubscribe = observerAuth((firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
+  const runAccessCheck = useCallback(
+    async (targetUser: User, background = false) => {
+      if (!background) {
+        setGate({ phase: 'loading' });
+      }
+      const res = await verifyUserAccess(db, 'cave-a-vin', targetUser);
+      if (userRef.current?.uid !== targetUser.uid) return;
+      if (res.outcome === 'authorized') {
+        setGate({ phase: 'authorized', status: res.status, offline: res.offline });
         activerSyncCloud(() => dataRef.current, applyLocalDataFromCloud);
+      } else if (res.outcome === 'unauthorized') {
+        arreterListenersFirestore();
+        reinitialiserEtatCloud();
+        setGate({ phase: 'unauthorized', email: res.email });
       } else {
         arreterListenersFirestore();
         reinitialiserEtatCloud();
+        setGate({ phase: 'offline_unverified', email: res.email });
+      }
+    },
+    [applyLocalDataFromCloud],
+  );
+
+  useEffect(() => {
+    const onOnline = () => {
+      if (userRef.current) {
+        void runAccessCheck(userRef.current, true);
+      }
+    };
+    window.addEventListener('online', onOnline);
+
+    const unsubscribe = observerAuth((firebaseUser) => {
+      userRef.current = firebaseUser;
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        void runAccessCheck(firebaseUser, false);
+      } else {
+        arreterListenersFirestore();
+        reinitialiserEtatCloud();
+        setGate({ phase: 'unauthenticated' });
       }
     });
     return () => {
+      window.removeEventListener('online', onOnline);
       unsubscribe();
       arreterListenersFirestore();
     };
-  }, [applyLocalDataFromCloud]);
+  }, [runAccessCheck]);
 
   const handleRestartSync = useCallback(() => {
     activerSyncCloud(() => dataRef.current, applyLocalDataFromCloud);
@@ -149,8 +186,19 @@ export const App: React.FC = () => {
     await forcerSyncCloud(dataRef.current);
   }, []);
 
+  const handleGateSignOut = useCallback(async () => {
+    clearHubAuthCache('cave-a-vin');
+    arreterListenersFirestore();
+    await deconnexionFirebase();
+    reinitialiserEtatCloud();
+    userRef.current = null;
+    setUser(null);
+    setGate({ phase: 'unauthenticated' });
+  }, []);
+
   const handleSignOutCloud = useCallback(async () => {
     if (!window.confirm('Se déconnecter du compte Cloud ?')) return;
+    clearHubAuthCache('cave-a-vin');
     arreterListenersFirestore();
     await deconnexionFirebase();
     reinitialiserEtatCloud();
@@ -439,6 +487,21 @@ export const App: React.FC = () => {
   const itemSummaryLabel = `${data.bottles.length} référence${
     data.bottles.length > 1 ? 's' : ''
   }, ${data.cellars.length} cave${data.cellars.length > 1 ? 's' : ''}`;
+
+  if (gate.phase !== 'authorized') {
+    return (
+      <AccessGate
+        gate={gate}
+        user={user}
+        onRetryVerification={() => {
+          if (userRef.current) {
+            void runAccessCheck(userRef.current, false);
+          }
+        }}
+        onSignOut={handleGateSignOut}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#2a1019_0%,_#11070a_45%,_#0b0507_100%)] text-stone-100">

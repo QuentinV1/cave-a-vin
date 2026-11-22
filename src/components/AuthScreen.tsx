@@ -18,9 +18,7 @@ import {
   db,
   formatAuthError,
   inscriptionEmail,
-  rechargerUtilisateurFirebase,
   reinitialiserMotDePasse,
-  renvoyerEmailVerification,
 } from '../utils/firebase';
 import { CloudState } from '../utils/firestoreStorage';
 import { resolveUserAccess, type AccessStatus } from '../utils/accessControl';
@@ -45,9 +43,9 @@ export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
   cloudState,
   itemSummaryLabel,
   onForceSync,
-  onRestartSync,
+  onRestartSync: _onRestartSync,
   onSignOut,
-  onUserReloaded,
+  onUserReloaded: _onUserReloaded,
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,41 +53,38 @@ export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  const [verifMsg, setVerifMsg] = useState<string>(
-    'Vérifiez votre boîte mail (et vos courriers indésirables), cliquez sur le lien reçu puis sur « J’ai vérifié ».',
-  );
-  const [verifBusy, setVerifBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [localSyncError, setLocalSyncError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'account' | 'access'>('account');
   const [accessStatus, setAccessStatus] = useState<AccessStatus | null>(null);
 
   useEffect(() => {
-    if (!isOpen || !user?.email || !user.emailVerified) {
+    if (!isOpen || !user?.email) {
       setAccessStatus(null);
       setActiveTab('account');
       return;
     }
     let cancelled = false;
-    resolveUserAccess(db, 'cave-a-vin', user.email).then((status) => {
-      if (!cancelled) {
-        setAccessStatus(status);
-        if (!status.isAdmin) setActiveTab('account');
-      }
-    });
+    resolveUserAccess(db, 'cave-a-vin', user.email)
+      .then((status) => {
+        if (!cancelled) {
+          setAccessStatus(status);
+          if (!status.isAdmin) setActiveTab('account');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAccessStatus(null);
+      });
     return () => {
       cancelled = true;
     };
-  }, [isOpen, user?.email, user?.emailVerified]);
+  }, [isOpen, user?.email]);
 
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
     setInfo(null);
     setLocalSyncError(null);
-    setVerifMsg(
-      'Vérifiez votre boîte mail (et vos courriers indésirables), cliquez sur le lien reçu puis sur « J’ai vérifié ».',
-    );
   }, [isOpen, user?.uid]);
 
   useEffect(() => {
@@ -160,41 +155,6 @@ export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
       setError(formatAuthError(err));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleResendVerification = async () => {
-    setVerifBusy(true);
-    try {
-      const sent = await renvoyerEmailVerification();
-      setVerifMsg(
-        sent
-          ? 'E-mail de vérification envoyé ! Vérifiez votre boîte de réception (et les spams), puis cliquez sur « J’ai vérifié ».'
-          : 'Votre adresse e-mail est déjà vérifiée.',
-      );
-    } catch (err) {
-      setVerifMsg(formatAuthError(err));
-    } finally {
-      setVerifBusy(false);
-    }
-  };
-
-  const handleCheckVerified = async () => {
-    setVerifBusy(true);
-    try {
-      const reloaded = await rechargerUtilisateurFirebase();
-      onUserReloaded(reloaded);
-      if (reloaded?.emailVerified) {
-        onRestartSync();
-      } else {
-        setVerifMsg(
-          'Adresse toujours non vérifiée. Cliquez d’abord sur le lien reçu par e-mail.',
-        );
-      }
-    } catch (err) {
-      setVerifMsg(formatAuthError(err));
-    } finally {
-      setVerifBusy(false);
     }
   };
 
@@ -468,40 +428,6 @@ export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
                 className="rounded-xl border border-red-700/60 bg-red-950/60 px-3.5 py-2.5 text-xs text-red-200"
               >
                 {displayedSyncError}
-              </div>
-            )}
-
-            {!user.emailVerified && (
-              <div
-                id="auth-unverified-box"
-                className="rounded-xl border border-amber-600/40 bg-amber-950/40 p-3.5 text-xs"
-              >
-                <div className="mb-1 font-bold text-amber-300">
-                  Adresse e-mail non vérifiée
-                </div>
-                <div id="auth-unverified-msg" className="mb-3 text-stone-300">
-                  {verifMsg}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    id="btn-resend-verif"
-                    disabled={verifBusy}
-                    onClick={() => void handleResendVerification()}
-                    className="rounded-lg border border-cellar-700 bg-cellar-900 px-3 py-1.5 text-xs font-medium text-stone-200 transition hover:border-amber-500/50 hover:text-white disabled:opacity-50"
-                  >
-                    Renvoyer l&apos;e-mail de vérification
-                  </button>
-                  <button
-                    type="button"
-                    id="btn-check-verif"
-                    disabled={verifBusy}
-                    onClick={() => void handleCheckVerified()}
-                    className="rounded-lg bg-bordeaux-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-bordeaux-500 disabled:opacity-50"
-                  >
-                    J&apos;ai vérifié
-                  </button>
-                </div>
               </div>
             )}
 

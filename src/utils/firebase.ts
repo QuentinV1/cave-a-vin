@@ -192,7 +192,7 @@ export function formatAuthError(err: unknown): string {
     case 'auth/too-many-requests':
       return 'Trop de tentatives. Veuillez réessayer dans quelques minutes.';
     case 'permission-denied':
-      return 'Accès Firestore refusé (vérifiez que votre e-mail est bien vérifié et autorisé).';
+      return 'Accès Firestore refusé (vérifiez que votre compte est bien autorisé).';
     default:
       return err instanceof Error ? err.message : 'Erreur lors de la connexion.';
   }

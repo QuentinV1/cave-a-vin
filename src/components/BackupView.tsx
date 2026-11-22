@@ -146,11 +146,6 @@ export const BackupView: React.FC<BackupViewProps> = ({
                 <strong className="break-all text-stone-100">
                   {user.email || user.displayName || user.uid}
                 </strong>
-                {!user.emailVerified && (
-                  <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
-                    E-mail non vérifié
-                  </span>
-                )}
                 {cloudState?.syncStatus === 'error' && cloudState.syncError && (
                   <div className="mt-1 text-red-300">{cloudState.syncError}</div>
                 )}
