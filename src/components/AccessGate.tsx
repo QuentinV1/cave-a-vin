@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { User } from 'firebase/auth';
 import {
-  KeyRound,
+  Camera,
+  LayoutGrid,
   Loader2,
+  LogIn,
   LogOut,
   Mail,
   RefreshCw,
   ShieldAlert,
+  Sparkles,
+  UserPlus,
   WifiOff,
   Wine,
 } from 'lucide-react';
@@ -39,6 +43,7 @@ export const AccessGate: React.FC<AccessGateProps> = ({
   onRetryVerification,
   onSignOut,
 }) => {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -114,222 +119,270 @@ export const AccessGate: React.FC<AccessGateProps> = ({
     }
   };
 
+  const highlights = [
+    {
+      icon: Camera,
+      title: 'Scan d’étiquette & Code-barres',
+      desc: 'Ajoute tes bouteilles par photo IA ou scan en quelques secondes.',
+    },
+    {
+      icon: LayoutGrid,
+      title: 'Casiers visuels & Apogée',
+      desc: 'Visualise tes emplacements et anticipe les fenêtres de dégustation.',
+    },
+    {
+      icon: Sparkles,
+      title: 'Accords & Dégustations',
+      desc: 'Garde l’historique de tes notes, accords mets-vins et valorisation.',
+    },
+  ];
+
   return (
     <div
       id="access-gate-wall"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-cellar-950 p-4 text-stone-100"
+      className="fixed inset-0 z-50 flex min-h-full items-center justify-center overflow-y-auto bg-gradient-to-br from-slate-100 via-rose-50/40 to-slate-100 p-4 sm:p-6"
     >
-      <div className="w-full max-w-md rounded-2xl border border-cellar-700 bg-cellar-900 p-6 shadow-2xl">
-        <div className="mb-5 flex items-center gap-3 border-b border-cellar-800 pb-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-bordeaux-900/60 text-gold-400">
-            <Wine className="h-5 w-5" />
+      <div className="grid w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xl lg:grid-cols-12">
+        {/* Panneau éditorial */}
+        <div className="relative flex flex-col justify-between bg-gradient-to-br from-stone-950 via-rose-950 to-rose-900 p-7 text-white lg:col-span-6 lg:p-10">
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur-sm">
+                <Wine className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <p className="text-xl font-extrabold tracking-tight">La Cave</p>
+                <p className="text-xs text-rose-100/80">Suivi de stock &amp; dégustation</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-2xl font-bold leading-tight sm:text-3xl">
+                Gère tes bouteilles, casiers et dégustations.
+              </h1>
+              <p className="text-sm text-rose-100/80">
+                Synchronisé en temps réel sur tous tes appareils et accessible hors-ligne au fond de la cave.
+              </p>
+            </div>
+
+            <div className="hidden space-y-3 pt-2 lg:block">
+              {highlights.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.title}
+                    className="flex items-start gap-3 rounded-2xl bg-white/10 p-3.5 ring-1 ring-white/10 backdrop-blur-sm"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                      <Icon className="h-4 w-4 text-rose-100" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{item.title}</p>
+                      <p className="text-xs text-rose-100/80">{item.desc}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div>
-            <h1 className="font-serif text-lg font-bold text-stone-100">La Cave</h1>
-            <p className="text-xs text-stone-400">Accès sécurisé &amp; Synchronisation</p>
+
+          <div className="mt-6 hidden items-center gap-2 text-xs text-rose-100/70 lg:flex">
+            <WifiOff className="h-3.5 w-3.5" />
+            <span>Mode PWA hors-ligne inclus</span>
           </div>
         </div>
 
-        {gate.phase === 'loading' && (
-          <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-gold-400" />
-            <p className="text-sm text-stone-300">
-              Vérification de votre session et de vos autorisations…
-            </p>
-          </div>
-        )}
+        {/* Formulaire */}
+        <div className="flex flex-col justify-center p-6 sm:p-8 lg:col-span-6 lg:p-10">
+          {gate.phase === 'loading' && (
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-rose-800" />
+              <p className="text-sm text-slate-600">
+                Vérification de votre session et de vos autorisations…
+              </p>
+            </div>
+          )}
 
-        {gate.phase === 'unauthenticated' && (
-          <div id="access-gate-login">
-            <p className="mb-4 text-xs leading-relaxed text-stone-400">
-              Connexion requise pour accéder à votre cave. Connectez-vous une première
-              fois en ligne pour activer l&apos;utilisation hors-ligne en cave.
-            </p>
-
-            {error && (
-              <div className="mb-3 rounded-xl border border-red-700/60 bg-red-950/60 px-3.5 py-2.5 text-xs text-red-200">
-                {error}
-              </div>
-            )}
-            {info && (
-              <div className="mb-3 rounded-xl border border-emerald-700/60 bg-emerald-950/50 px-3.5 py-2.5 text-xs text-emerald-200">
-                {info}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <div>
-                <label
-                  htmlFor="gate-auth-email"
-                  className="mb-1 block text-xs font-medium text-stone-300"
-                >
-                  Email
-                </label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
-                  <input
-                    id="gate-auth-email"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="prenom@exemple.fr"
-                    className="w-full rounded-xl border border-cellar-700 bg-cellar-950 py-2.5 pl-9 pr-3 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
-                  />
-                </div>
+          {gate.phase === 'unauthenticated' && (
+            <div id="access-gate-login">
+              <div className="mb-6 space-y-1">
+                <h2 className="text-xl font-bold text-slate-900">
+                  {mode === 'login' ? 'Connexion à ton espace' : 'Créer ton compte'}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Utilise ton compte autorisé pour retrouver ta cave personnelle synchronisée.
+                </p>
               </div>
 
-              <div>
-                <div className="mb-1 flex items-center justify-between">
-                  <label
-                    htmlFor="gate-auth-password"
-                    className="block text-xs font-medium text-stone-300"
-                  >
-                    Mot de passe (6 car. min)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => void handleResetPassword()}
-                    disabled={loading}
-                    className="text-[11px] text-gold-400 hover:text-gold-300 disabled:opacity-50"
-                  >
-                    Mot de passe oublié ?
-                  </button>
-                </div>
-                <div className="relative">
-                  <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
-                  <input
-                    id="gate-auth-password"
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void handleEmailAuth(false);
-                      }
-                    }}
-                    placeholder="••••••••"
-                    className="w-full rounded-xl border border-cellar-700 bg-cellar-950 py-2.5 pl-9 pr-3 text-sm text-stone-100 placeholder-stone-500 focus:border-bordeaux-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2 pt-1">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void handleEmailAuth(false)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-bordeaux-900/50 transition hover:bg-bordeaux-500 disabled:opacity-60"
-                >
-                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Se connecter
-                </button>
-
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void handleEmailAuth(true)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cellar-700 bg-cellar-950 px-4 py-2.5 text-sm font-medium text-stone-200 transition hover:border-bordeaux-500 hover:bg-cellar-800 disabled:opacity-60"
-                >
-                  Créer un compte
-                </button>
-
+              <div className="space-y-4">
                 <button
                   type="button"
                   disabled={loading}
                   onClick={() => void handleGoogleLogin()}
-                  className="inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-cellar-700 bg-cellar-950 px-4 py-2.5 text-sm font-medium text-stone-100 transition hover:border-stone-500 hover:bg-cellar-800/70 disabled:opacity-60"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-950 disabled:opacity-60"
                 >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
-                    />
-                  </svg>
+                  <LogIn className="h-4 w-4" />
                   Continuer avec Google
                 </button>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {gate.phase === 'unauthorized' && (
-          <div id="access-gate-unauthorized" className="space-y-4">
-            <div className="flex items-start gap-3 rounded-xl border border-red-700/60 bg-red-950/60 p-4 text-xs text-red-200">
-              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
-              <div className="space-y-1">
-                <div className="text-sm font-bold text-red-100">Accès non autorisé</div>
-                <p className="leading-relaxed">
-                  Le compte <strong className="break-all">{user?.email || gate.email}</strong>{' '}
-                  n&apos;est pas autorisé sur cette application. Contactez un administrateur.
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => void handleSignOutClick()}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-900/60 bg-rose-950/40 px-4 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-900/60 disabled:opacity-60"
-            >
-              <LogOut className="h-4 w-4" />
-              Se déconnecter / Changer de compte
-            </button>
-          </div>
-        )}
-
-        {gate.phase === 'offline_unverified' && (
-          <div id="access-gate-offline" className="space-y-4">
-            <div className="flex items-start gap-3 rounded-xl border border-amber-600/40 bg-amber-950/40 p-4 text-xs text-amber-100">
-              <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
-              <div className="space-y-1">
-                <div className="text-sm font-bold text-amber-200">
-                  Connexion Internet requise pour vérifier vos autorisations
+                <div className="flex items-center gap-3 text-xs text-slate-400">
+                  <div className="h-px flex-1 bg-slate-200" />
+                  <span>ou par e-mail</span>
+                  <div className="h-px flex-1 bg-slate-200" />
                 </div>
-                <p className="leading-relaxed text-stone-300">
-                  Aucune autorisation hors-ligne valide n&apos;a été trouvée pour{' '}
-                  <strong className="break-all">{user?.email || gate.email}</strong>.
-                  Connectez-vous à Internet pour valider votre accès.
-                </p>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleEmailAuth(mode === 'register');
+                  }}
+                  className="space-y-3"
+                >
+                  <input
+                    id="gate-auth-email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="adresse@email.com"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-rose-800 focus:ring-2 focus:ring-rose-100"
+                  />
+
+                  <div className="space-y-1.5">
+                    <input
+                      id="gate-auth-password"
+                      type="password"
+                      required
+                      minLength={6}
+                      autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Mot de passe (6+ caractères)"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-rose-800 focus:ring-2 focus:ring-rose-100"
+                    />
+                    {mode === 'login' && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void handleResetPassword()}
+                          disabled={loading}
+                          className="text-[11px] font-medium text-rose-800 hover:underline disabled:opacity-50"
+                        >
+                          Mot de passe oublié ?
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : mode === 'register' ? (
+                      <UserPlus className="h-4 w-4" />
+                    ) : (
+                      <Mail className="h-4 w-4" />
+                    )}
+                    {mode === 'register' ? 'Créer un compte' : 'Se connecter par e-mail'}
+                  </button>
+                </form>
+
+                <button
+                  type="button"
+                  className="w-full cursor-pointer pt-1 text-center text-xs font-medium text-slate-500 hover:text-rose-800"
+                  onClick={() => {
+                    setMode(mode === 'login' ? 'register' : 'login');
+                    setError(null);
+                    setInfo(null);
+                  }}
+                >
+                  {mode === 'login'
+                    ? 'Pas encore de compte ? Créer un compte'
+                    : 'Déjà inscrit ? Se connecter'}
+                </button>
+
+                {error && (
+                  <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-700">
+                    {error}
+                  </p>
+                )}
+                {info && (
+                  <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-medium text-emerald-800">
+                    {info}
+                  </p>
+                )}
               </div>
             </div>
+          )}
 
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={onRetryVerification}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-bordeaux-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-bordeaux-500 disabled:opacity-60"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Réessayer
-              </button>
+          {gate.phase === 'unauthorized' && (
+            <div id="access-gate-unauthorized" className="space-y-4">
+              <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-900">
+                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                <div className="space-y-1">
+                  <div className="text-sm font-bold text-red-950">Accès non autorisé</div>
+                  <p className="leading-relaxed">
+                    Le compte <strong className="break-all">{user?.email || gate.email}</strong>{' '}
+                    n&apos;est pas autorisé sur cette application. Contactez un administrateur.
+                  </p>
+                </div>
+              </div>
+
               <button
                 type="button"
                 disabled={loading}
                 onClick={() => void handleSignOutClick()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-900/60 bg-rose-950/40 px-4 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-900/60 disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
               >
                 <LogOut className="h-4 w-4" />
                 Se déconnecter / Changer de compte
               </button>
             </div>
-          </div>
-        )}
+          )}
+
+          {gate.phase === 'offline_unverified' && (
+            <div id="access-gate-offline" className="space-y-4">
+              <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div className="space-y-1">
+                  <div className="text-sm font-bold text-amber-950">
+                    Connexion Internet requise pour vérifier vos autorisations
+                  </div>
+                  <p className="leading-relaxed">
+                    Aucune autorisation hors-ligne valide n&apos;a été trouvée pour{' '}
+                    <strong className="break-all">{user?.email || gate.email}</strong>.
+                    Connectez-vous à Internet pour valider votre accès.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={onRetryVerification}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-950 disabled:opacity-60"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Réessayer
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleSignOutClick()}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Se déconnecter / Changer de compte
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

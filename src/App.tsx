@@ -7,6 +7,7 @@ import {
   Database,
   Flame,
   Grid3X3,
+  MessageSquarePlus,
   Plus,
   Search,
   Sparkles,
@@ -44,6 +45,7 @@ import {
   WINE_COLOR_LABELS,
 } from './utils/wineUtils';
 import { CloudAuthModal } from './components/AuthScreen';
+import { FeedbackModal } from './components/FeedbackModal';
 import { AccessGate, AccessGateState } from './components/AccessGate';
 import { BottleCard } from './components/BottleCard';
 import { BottleModal } from './components/BottleModal';
@@ -79,6 +81,7 @@ export const App: React.FC = () => {
     ...initialCloudState,
   });
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const [storageError, setStorageError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('inventory');
@@ -577,6 +580,16 @@ export const App: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             <button
               type="button"
+              onClick={() => setFeedbackOpen(true)}
+              title="Envoyer un feedback (évolution ou bug)"
+              aria-label="Envoyer un feedback"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-cellar-700 bg-cellar-900/80 px-2.5 py-2 text-xs font-medium text-stone-300 transition hover:border-gold-500/60 hover:text-white sm:gap-2 sm:px-3 sm:py-2.5"
+            >
+              <MessageSquarePlus className="h-4 w-4 text-gold-400" />
+              <span className="hidden sm:inline">Feedback</span>
+            </button>
+            <button
+              type="button"
               id="btn-auth-header"
               onClick={() => setAuthModalOpen(true)}
               title={
@@ -894,6 +907,13 @@ export const App: React.FC = () => {
       </main>
 
       {/* Modals */}
+      <FeedbackModal
+        open={feedbackOpen}
+        user={user}
+        db={db}
+        context={`tab=${activeTab}`}
+        onClose={() => setFeedbackOpen(false)}
+      />
       <CloudAuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
