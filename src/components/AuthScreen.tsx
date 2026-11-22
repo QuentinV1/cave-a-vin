@@ -9,11 +9,13 @@ import {
   LogOut,
   Mail,
   RefreshCw,
+  Shield,
   X,
 } from 'lucide-react';
 import {
   connexionEmail,
   connexionGoogle,
+  db,
   formatAuthError,
   inscriptionEmail,
   rechargerUtilisateurFirebase,
@@ -21,6 +23,8 @@ import {
   renvoyerEmailVerification,
 } from '../utils/firebase';
 import { CloudState } from '../utils/firestoreStorage';
+import { resolveUserAccess, type AccessStatus } from '../utils/accessControl';
+import { AccessControlPanel } from './AccessControlPanel';
 
 export interface CloudAuthModalProps {
   isOpen: boolean;
@@ -57,6 +61,26 @@ export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
   const [verifBusy, setVerifBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [localSyncError, setLocalSyncError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'account' | 'access'>('account');
+  const [accessStatus, setAccessStatus] = useState<AccessStatus | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !user?.email || !user.emailVerified) {
+      setAccessStatus(null);
+      setActiveTab('account');
+      return;
+    }
+    let cancelled = false;
+    resolveUserAccess(db, 'cave-a-vin', user.email).then((status) => {
+      if (!cancelled) {
+        setAccessStatus(status);
+        if (!status.isAdmin) setActiveTab('account');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, user?.email, user?.emailVerified]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -379,6 +403,50 @@ export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
         ) : (
           /* Panneau compte connecté */
           <div id="auth-logged-in-panel" className="space-y-3.5">
+            {accessStatus?.isAdmin && (
+              <div className="flex gap-1.5 rounded-xl border border-cellar-800 bg-cellar-950 p-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('account')}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    activeTab === 'account'
+                      ? 'bg-cellar-800 text-stone-100 shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  Compte Cloud
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('access')}
+                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    activeTab === 'access'
+                      ? 'bg-cellar-800 text-sky-400 shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  <Shield className="h-3.5 w-3.5" />
+                  Accès &amp; Rôles
+                </button>
+              </div>
+            )}
+
+            {accessStatus && !accessStatus.hasAppAccess && (
+              <div className="rounded-xl border border-red-700/60 bg-red-950/60 px-3.5 py-2.5 text-xs font-medium text-red-200">
+                Votre compte n&apos;est pas autorisé sur cette application. Contactez un administrateur.
+              </div>
+            )}
+
+            {activeTab === 'access' && accessStatus?.isAdmin ? (
+              <AccessControlPanel
+                db={db}
+                user={user}
+                appId="cave-a-vin"
+                appName="La Cave"
+                theme="dark"
+              />
+            ) : (
+              <>
             <div className="rounded-xl border border-cellar-800 bg-cellar-950/80 p-3.5">
               <div className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
                 Connecté en tant que
@@ -464,6 +532,8 @@ export const CloudAuthModal: React.FC<CloudAuthModalProps> = ({
                 Se déconnecter
               </button>
             </div>
+              </>
+            )}
           </div>
         )}
       </div>
